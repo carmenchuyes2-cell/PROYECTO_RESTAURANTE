@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RestauranteLatina | FastFood</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="top">
+    <div class="brand">🍔 Restaurante<span>Latina</span></div>
+    <nav class="nav-desktop">
+      <a href="#menu" data-go="menu">Menú</a>
+      <a href="#pedido" data-go="pedido">Pedido</a>
+      <a href="#boleta" data-go="boleta">Boleta</a>
+      <a href="#ventas" data-go="ventas" data-admin="1">Ventas</a>
+    </nav>
+    <div class="userbox" id="userBox" hidden>
+      <span class="user-badge" id="userBadge"></span>
+      <button class="btn btn-yellow btn-sm" id="btnLogout" type="button">Salir</button>
+    </div>
+    <button class="menu-btn" id="menuBtn" aria-label="Abrir menú">☰</button>
+  </header>
+  <nav class="nav-mobile" id="navMobile">
+    <a href="#menu" data-go="menu">🍔 Menú</a>
+    <a href="#pedido" data-go="pedido">🧾 Pedido</a>
+    <a href="#boleta" data-go="boleta">🎫 Boleta</a>
+    <a href="#ventas" data-go="ventas" data-admin="1">📊 Ventas</a>
+  </nav>
+
+  <section class="hero">
+    <div>
+      <span class="badge">Comida rápida • S/ • IGV 18%</span>
+      <h1>Sabor rápido, cuenta exacta</h1>
+      <p>Selecciona, acumula, paga y genera tu boleta digital sin errores de cálculo. Funciona en celular, tablet y PC.</p>
+      <div class="hero-actions">
+        <a href="#menu" class="btn btn-yellow" data-go="menu">Iniciar pedido</a>
+        <span class="device-hint" id="deviceHint"></span>
+      </div>
+      <ol class="steps" id="stepsBar">
+        <li data-step="menu" class="active">1 Menú</li>
+        <li data-step="pedido">2 Pedido</li>
+        <li data-step="pago">3 Pago</li>
+        <li data-step="boleta">4 Boleta</li>
+      </ol>
+    </div>
+    <div class="hero-card">
+      <h3>Total en vivo</h3>
+      <p class="live-total" id="liveTotal">S/ 0.00</p>
+      <small id="liveCount">0 productos</small>
+      <button class="btn btn-red btn-block" data-go="pedido">Ver mi pedido</button>
+    </div>
+  </section>
+
+  <main>
+    <section id="login" class="section screen active">
+      <h2>Ingreso — usuario y contraseña</h2>
+      <form class="login-card" id="loginForm">
+        <label>Usuario
+          <input id="loginUser" autocomplete="username" placeholder="admin o empleado" required />
+        </label>
+        <label>Contraseña
+          <input id="loginPass" type="password" autocomplete="current-password" placeholder="••••••" required />
+        </label>
+        <button class="btn btn-red btn-block" type="submit">Ingresar</button>
+        <p class="muted">Demo: admin / 123456 (todo) • empleado / 123456789 (sin ventas)</p>
+        <p class="form-msg" id="loginMsg"></p>
+      </form>
+    </section>
+    <section id="menu" class="section screen">
+      <h2>1. Menú principal — selecciona producto</h2>
+      <div class="client-row">
+        <input id="dni" placeholder="DNI cliente" maxlength="15" inputmode="numeric" />
+        <input id="nombreCli" placeholder="Nombre cliente" />
+      </div>
+      <div class="grid" id="menuGrid"></div>
+      <div class="add-box">
+        <select id="selProd" aria-label="Producto"></select>
+        <div class="qty">
+          <button class="btn btn-dark" id="qtyMinus" type="button">−</button>
+          <input id="inpCant" type="number" min="1" value="1" />
+          <button class="btn btn-dark" id="qtyPlus" type="button">+</button>
+        </div>
+        <button class="btn btn-red" id="btnAdd">Agregar +</button>
+      </div>
+      <div class="screen-nav">
+        <span></span>
+        <button class="btn btn-orange" data-go="pedido">Siguiente: mi pedido →</button>
+      </div>
+    </section>
+
+    <section id="pedido" class="section screen">
+      <h2>2. Tu pedido — agrega o quita artículos</h2>
+      <div class="table-wrap">
+        <table class="tbl">
+          <thead><tr><th>Producto</th><th>Cant</th><th>P.Unit</th><th>Subtotal</th><th></th></tr></thead>
+          <tbody id="cartBody"></tbody>
+        </table>
+      </div>
+      <div id="cartCards"></div>
+      <div class="totals">
+        <p>Cantidad: <b id="tCant">0</b></p>
+        <p>Subtotal: <b id="tSub">S/ 0.00</b></p>
+        <p>IGV 18%: <b id="tIgv">S/ 0.00</b></p>
+        <p class="grand">Total: <b id="tTot">S/ 0.00</b></p>
+      </div>
+      <div class="actions">
+        <button class="btn btn-dark" id="btnSeguir">¿Agregar otro? Volver al menú</button>
+        <button class="btn btn-orange" id="btnFinalizar">No, mostrar total y pagar →</button>
+      </div>
+      <div class="pay" id="payBox" hidden>
+        <h3>3. Método de pago</h3>
+        <div class="pay-grid">
+          <label class="pay-opt"><input type="radio" name="pay" value="Efectivo" checked /> 💵 Efectivo</label>
+          <label class="pay-opt"><input type="radio" name="pay" value="Tarjeta" /> 💳 Tarjeta</label>
+          <label class="pay-opt"><input type="radio" name="pay" value="Yape" /> 📱 Yape</label>
+          <label class="pay-opt"><input type="radio" name="pay" value="Tarjeta de credito" /> 💎 T. Crédito</label>
+        </div>
+        <button class="btn btn-red btn-block" id="btnPagar">Generar boleta</button>
+        <div class="yape-box" id="yapeBox" hidden>
+          <h4>📱 Paga con Yape escaneando el QR</h4>
+          <img id="qrImg" width="220" height="220" alt="QR Yape RestauranteLatina" />
+          <p class="qr-monto" id="qrMonto">Total: S/ 0.00</p>
+          <p>Yape al: <b>999 888 777</b> — RestauranteLatina</p>
+          <small class="muted">1) Abre Yape • 2) Escanea • 3) Confirma el monto • 4) Pulsa Generar boleta</small>
+        </div>
+      </div>
+      <div class="screen-nav">
+        <button class="btn btn-dark" data-go="menu">← Menú</button>
+        <button class="btn btn-orange" data-go="boleta">Ver boleta →</button>
+      </div>
+    </section>
+
+    <section id="boleta" class="section screen">
+      <h2>4. Boleta digital</h2>
+      <div class="boleta" id="boletaView">
+        <div class="b-head"><h3>RestauranteLatina</h3><span id="bNum">BOLETA —</span><p id="bCli">Cliente General</p></div>
+        <div id="bItems"><p class="muted">Aún no hay boleta. Finaliza un pedido.</p></div>
+        <div class="b-tot" id="bTot"></div>
+      </div>
+      <div class="actions">
+        <button class="btn btn-dark" id="btnPrint">Imprimir / Guardar</button>
+        <button class="btn btn-yellow" data-go="ventas">Ver ventas del día →</button>
+      </div>
+    </section>
+
+    <section id="ventas" class="section screen">
+      <h2>Ventas y pagos del día</h2>
+      <div class="filters">
+        <select id="filtroPago">
+          <option value="todos">Todos los métodos</option>
+          <option>Efectivo</option><option>Tarjeta</option>
+          <option>Yape</option><option>Tarjeta de credito</option>
+        </select>
+        <button class="btn btn-yellow" id="btnReporte">Actualizar</button>
+      </div>
+      <div class="sales-summary" id="salesSummary"></div>
+      <div id="salesList"></div>
+      <p class="grand">Total día: <b id="dayTotal">S/ 0.00</b></p>
+    </section>
+  </main>
+
+  <button class="cart-fab" id="cartFab" data-go="pedido">🧾 <span id="fabCount">0</span> • <span id="fabTotal">S/ 0.00</span></button>
+
+  <nav class="bottom-nav">
+    <a href="#menu" data-go="menu">🍔<small>Menú</small></a>
+    <a href="#pedido" data-go="pedido">🧾<small>Pedido</small></a>
+    <a href="#boleta" data-go="boleta">🎫<small>Boleta</small></a>
+    <a href="#ventas" data-go="ventas" data-admin="1">📊<small>Ventas</small></a>
+  </nav>
+
+  <div class="toast" id="toast"></div>
+  <footer>© 2026 RestauranteLatina — FastFood • Responsive móvil / tablet / PC</footer>
+  <script src="app.js"></script>
+</body>
+</html>
