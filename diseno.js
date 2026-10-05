@@ -7,9 +7,10 @@
  *   PARTE 3. Interfaz (qué pasa al pulsar cada botón)
  *   PARTE 4. Conexión con la lógica en C
  *
- * NO hace cálculos ni validaciones: toda la lógica del sistema
- * (stock, carrito, IGV, totales, vuelto, registro, login, pedidos
- * y reportes) está en el archivo logica.c, y aquí se usa como C.funcion().
+ * NO calcula, NO valida y NO decide nada: toda la lógica de cómo funciona
+ * el sistema (clientes, stock, carrito, IGV, totales, vuelto, registro,
+ * login, pedidos, boletas, listas y reportes) está en logica.c, y aquí
+ * se usa como C.funcion(). JavaScript solo dibuja lo que C responde.
  */
 
 /* ================================================================
@@ -312,6 +313,11 @@ footer{color:var(--gris);text-align:center;padding:1.5rem 0 .5rem;font-size:.85r
 .switch-msg a{color:var(--rojo);font-weight:bold}
 .autorizado{display:flex;align-items:center;justify-content:center;gap:.4rem;margin-top:1rem;font-size:.85rem;color:var(--gris)}
 .autorizado .ico{color:#8b939b}
+.demo-cuentas{margin-top:1rem;background:#fff7f0;border:1px dashed #f3c9a6;border-radius:10px;padding:.75rem .9rem;display:grid;gap:.35rem;font-size:.88rem}
+.demo-titulo{font-weight:bold;color:#c2410c;font-size:.8rem;text-transform:uppercase;letter-spacing:.4px}
+.demo-fila{display:flex;justify-content:space-between;gap:.5rem;flex-wrap:wrap}
+.demo-cuentas code{background:#fff;border:1px solid #f3dccb;border-radius:5px;padding:.05rem .35rem;font-size:.85rem}
+.demo-cuentas small{color:var(--gris);font-size:.78rem}
 @media(max-width:560px){.doodles{display:none}.login-card{padding:1.8rem 1.2rem 1.4rem}.login-brand{margin-top:2.8rem}.brand-name{font-size:1.25rem}}
 </style>`);
 
@@ -446,6 +452,12 @@ document.body.insertAdjacentHTML("afterbegin", `
     <p class="error-msg" id="loginMsg" hidden></p>
     <button class="btn-ingresar" type="submit">Ingresar como empleado</button>
     <p class="autorizado"><svg class="ico"><use href="#i-shield"/></svg> Acceso para personal autorizado</p>
+    <div class="demo-cuentas">
+      <span class="demo-titulo">Cuentas de prueba (demo)</span>
+      <div class="demo-fila"><b>Administrador</b><span><code>admin</code> / <code>123456</code></span></div>
+      <div class="demo-fila"><b>Cajero</b><span><code>empleado</code> / <code>123456789</code></span></div>
+      <small>También puedes entrar con el DNI: 10000001 (admin) o 10000002 (cajero)</small>
+    </div>
   </form>
 </div>
 
@@ -711,7 +723,8 @@ document.body.insertAdjacentHTML("afterbegin", `
 
 /* ================================================================
  * PARTE 3. INTERFAZ
- * Toda la lógica la hace C (logica.c); aquí solo se muestra el resultado.
+ * Aquí solo se dibuja lo que responde C (logica.c).
+ * Cada "C.algo()" es una función escrita en C.
  * ================================================================ */
 cargarLogicaC().then(iniciarApp).catch(err=>{
   document.body.insertAdjacentHTML("afterbegin",
@@ -722,18 +735,23 @@ cargarLogicaC().then(iniciarApp).catch(err=>{
 
 function iniciarApp(C){
 
-/* ============ Datos que vienen del C ============ */
+/* ---------- Textos que se muestran según la respuesta de C ---------- */
 const METODOS = ["Efectivo","Tarjeta","Yape","Tarjeta de credito"];
-const ESTADO = {pendiente:0, cobrado:1, anulado:2};       // mismos números que en logica.c
+const ESTADOS = ["pendiente","cobrado","anulado"];
+const ESTADO_TXT = ["⏳ Pendiente","✅ Cobrado","✖ Anulado"];
 const MSG_CARRITO = {1:"Cantidad inválida.", 2:"Ese producto no existe.", 3:"Stock insuficiente.",
                      4:"Tu pedido llegó al máximo de 20 productos distintos.", 5:"Pedido vacío."};
 const MSG_REGISTRO = {1:"Escribe tu nombre completo.", 2:"El DNI debe tener 8 dígitos.",
-                      3:"Escribe un correo válido (ejemplo: nombre@correo.com).", 4:"La contraseña debe tener al menos 6 caracteres.",
-                      5:"Las contraseñas no coinciden.", 6:"Ese DNI ya está registrado. Inicia sesión."};
+                      3:"Escribe un correo válido (ejemplo: nombre@correo.com).", 4:"La contraseña debe tener entre 6 y 40 caracteres.",
+                      5:"Las contraseñas no coinciden.", 6:"Ese DNI ya está registrado. Inicia sesión.",
+                      7:"No hay espacio para más clientes."};
 const MSG_LOGIN = {1:"El DNI debe tener 8 dígitos.", 2:"Ese DNI no está registrado. Pulsa \"Regístrate aquí\".",
                    3:"Contraseña incorrecta."};
+const MSG_PEDIDO = {"-3":"Ya no hay stock suficiente de un producto. Revisa tu pedido.", "-4":"No hay espacio para más pedidos.",
+                    "-5":"Pedido vacío.", "-6":"Tu cuenta no existe. Vuelve a iniciar sesión."};
+const MSG_COBRO = {"-1":"Ese pedido no existe.", "-2":"Ese pedido ya fue atendido.", "-4":"No hay espacio para más boletas."};
 
-// Catálogo leído desde C (precio en céntimos)
+// Catálogo que viene de C
 const catalogo = [];
 for(let i=0; i<C.prod_total(); i++){
   const id = C.prod_id(i);
@@ -754,21 +772,21 @@ const PASOS = [["menu","Menú"],["pedido","Pedido"],["pago","Pago"],["mispedidos
 let sesion = JSON.parse(sessionStorage.getItem("rl_sesion") || "null");
 let vistaActual = "menu";
 
-/* ============ Utilidades ============ */
+/* ---------- Ayudas para mostrar ---------- */
 const $ = id => document.getElementById(id);
 const soles = c => "S/ " + (c/100).toFixed(2);              // céntimos -> texto
 const aCentimos = txt => Math.round(parseFloat(String(txt).replace(",", ".")) * 100);
 const numBoleta = n => "B001-" + String(n).padStart(6,"0");
+const numPedido = n => "P-" + String(n).padStart(4,"0");
 const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const hoyISO = () => { const d=new Date(); d.setMinutes(d.getMinutes()-d.getTimezoneOffset()); return d.toISOString().slice(0,10); };
-const leer = k => JSON.parse(localStorage.getItem(k) || "[]");
-const guardar = (k,v) => localStorage.setItem(k, JSON.stringify(v));
+const dos = n => String(n).padStart(2,"0");
+const hoy = () => { const d=new Date(); return d.getFullYear()*10000 + (d.getMonth()+1)*100 + d.getDate(); };   // AAAAMMDD
+const ahora = () => { const d=new Date(); return d.getHours()*10000 + d.getMinutes()*100 + d.getSeconds(); };  // HHMMSS
+const verDia = n => dos(n%100) + "/" + dos(Math.floor(n/100)%100) + "/" + Math.floor(n/10000);
+const verHora = n => dos(Math.floor(n/10000)) + ":" + dos(Math.floor(n/100)%100);
 const esCliente = () => sesion && sesion.rol==="cliente";
 const esStaff = () => sesion && sesion.rol!=="cliente";
 const esAdmin = () => sesion && sesion.rol==="admin";
-function siguiente(clave){ const n=Number(localStorage.getItem(clave)||1); localStorage.setItem(clave,n+1); return n; }
-function importe(precio, cantidad){ C.calc_iniciar(); C.calc_item(precio, cantidad); C.calc_terminar(); return C.total_subtotal(); }
-function leerTotales(){ return {cant:C.total_cantidad(), sub:C.total_subtotal(), igv:C.total_igv(), tot:C.total_pagar()}; }
 
 function toast(msg){
   const t = $("toast"); t.textContent = msg; t.classList.add("show");
@@ -780,25 +798,38 @@ function deviceHint(){
 }
 window.addEventListener("resize", deviceHint);
 
-/* ============ Stock (lo controla C, aquí solo se guarda) ============ */
-function cargarStock(){
-  const s = JSON.parse(localStorage.getItem("rlc_stock") || "null");
-  C.stock_reiniciar();
-  if(s) catalogo.forEach(p=>{ if(s[p.id]!==undefined) C.stock_poner(p.id, s[p.id]); });
+/* ---------- Copia de la base de datos de C en el navegador ----------
+ * C guarda clientes, pedidos, ventas y stock en su memoria. Para no perderlos
+ * al cerrar la página, se guarda una copia de esa memoria tal cual (sin leerla). */
+const CLAVE_BASE = "rl_base_c";
+let ultimaBase = null;
+function memoriaBase(){ return new Uint8Array(C.memory.buffer, C.base_datos(), C.base_tam()); }
+function guardarBase(){
+  const b = memoriaBase(); let s = "";
+  for(let i=0; i<b.length; i+=0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i+0x8000));
+  ultimaBase = btoa(s);
+  try{ localStorage.setItem(CLAVE_BASE, ultimaBase); }catch(e){ toast("No se pudo guardar en este navegador."); }
 }
-function guardarStock(){
-  guardar("rlc_stock", Object.fromEntries(catalogo.map(p=>[p.id, C.stock_de(p.id)])));
+function cargarBase(){
+  const t = localStorage.getItem(CLAVE_BASE);
+  if(t){
+    const bin = atob(t);
+    if(bin.length===C.base_tam()){
+      const b = memoriaBase();
+      for(let i=0; i<bin.length; i++) b[i] = bin.charCodeAt(i);
+      if(C.base_valida()){ ultimaBase = t; return; }
+    }
+  }
+  C.base_iniciar(); guardarBase();
 }
 
-/* ============ Login, registro y roles ============ */
-// Pantallas de acceso: inicio (elegir) -> cliente / registro / empleado, con botón Volver
+/* ---------- Pantallas de acceso ---------- */
 const FORMS = {inicio:"inicioAcceso", cliente:"clienteForm", registro:"registroForm", cajero:"loginForm"};
 function mostrarTab(tab){
   Object.entries(FORMS).forEach(([k,id])=>{ $(id).hidden = k!==tab; });
   document.querySelectorAll(".login-form .error-msg").forEach(m=>m.hidden=true);
   const f = $(FORMS[tab]).querySelector("input"); if(f) f.focus();
 }
-// Botón del ojo: mostrar / ocultar contraseña
 document.querySelectorAll(".ojo").forEach(b=>b.addEventListener("click",()=>{
   const inp = b.parentElement.querySelector("input"), ver = inp.type==="password";
   inp.type = ver ? "text" : "password";
@@ -811,43 +842,45 @@ function iniciar(s, msg){
   sesion = s; sessionStorage.setItem("rl_sesion", JSON.stringify(s));
   aplicarRol(); go(inicio()); toast(msg);
 }
-function sesionCliente(c){ return {user:c.dni, rol:"cliente", nombre:c.nombre, dni:c.dni}; }
+function entrarCliente(dni, msg){
+  C.escribir(0, dni);
+  const nombre = C.texto(C.cliente_nombre());
+  iniciar({user:dni, rol:"cliente", nombre, dni}, msg + nombre + "!");
+}
 
-// Registro: C valida los datos (validar_registro)
+// Registro: C valida y guarda al cliente
 $("registroForm").addEventListener("submit", e=>{
   e.preventDefault();
-  const nombre=$("regNombre").value.trim(), dni=$("regDni").value.trim(), correo=$("regCorreo").value.trim();
-  const clientes = leer("rl_clientes");
-  C.escribir(0, dni); C.escribir(1, nombre); C.escribir(2, correo);
+  cargarBase();
+  const dni = $("regDni").value.trim();
+  C.escribir(0, dni); C.escribir(1, $("regNombre").value.trim()); C.escribir(2, $("regCorreo").value.trim());
   C.escribir(3, $("regPass").value); C.escribir(4, $("regPass2").value);
-  const r = C.validar_registro(clientes.some(c=>c.dni===dni) ? 1 : 0);
+  const r = C.cliente_registrar();
   if(r) return error("regMsg", MSG_REGISTRO[r]);
-  const nuevo = {dni, nombre, correo, pass:$("regPass").value, registro:new Date().toLocaleString()};
-  clientes.push(nuevo); guardar("rl_clientes", clientes);
+  guardarBase();
   e.target.reset(); $("regMsg").hidden = true;
-  iniciar(sesionCliente(nuevo), "Cuenta creada. ¡Bienvenido " + nombre + "!");
+  entrarCliente(dni, "Cuenta creada. ¡Bienvenido ");
 });
-// Ingreso de cliente: C compara DNI y contraseña (login_cliente)
+// Ingreso de cliente: C busca el DNI y compara la contraseña
 $("clienteForm").addEventListener("submit", e=>{
   e.preventDefault();
+  cargarBase();
   const dni = $("cliDni").value.trim();
-  const c = leer("rl_clientes").find(x=>x.dni===dni);
-  C.escribir(0, dni); C.escribir(1, $("cliPass").value); C.escribir(2, c ? c.pass : "");
-  const r = C.login_cliente(c ? 1 : 0);
+  C.escribir(0, dni); C.escribir(1, $("cliPass").value);
+  const r = C.cliente_login();
   if(r) return error("cliMsg", MSG_LOGIN[r]);
   $("cliMsg").hidden = true; e.target.reset();
-  iniciar(sesionCliente(c), "Bienvenido " + c.nombre + ". ¡Arma tu pedido!");
+  entrarCliente(dni, "¡Bienvenido ");
 });
-// Ingreso de cajero: los usuarios están en C (login_cajero)
+// Ingreso de empleado: los empleados están en C
 $("loginForm").addEventListener("submit", e=>{
   e.preventDefault();
-  const u = $("loginUser").value.trim();
-  C.escribir(0, u); C.escribir(1, $("loginPass").value);
+  C.escribir(0, $("loginUser").value.trim()); C.escribir(1, $("loginPass").value);
   const rol = C.login_cajero();
   if(!rol) return error("loginMsg", "Usuario o contraseña incorrectos.");
-  const nombre = C.texto(C.cajero_nombre());
+  const nombre = C.texto(C.cajero_nombre()), user = C.texto(C.cajero_usuario());
   $("loginMsg").hidden = true; e.target.reset();
-  iniciar({user:u, rol: rol===2 ? "admin" : "empleado", nombre}, "Caja abierta: " + nombre + ".");
+  iniciar({user, rol: rol===2 ? "admin" : "empleado", nombre}, "Caja abierta: " + nombre + ".");
 });
 $("btnLogout").addEventListener("click", ()=>{
   C.carrito_vaciar(); $("payBox").hidden = true;
@@ -855,8 +888,7 @@ $("btnLogout").addEventListener("click", ()=>{
   aplicarRol(); mostrarTab("inicio"); sync(); toast("Sesión cerrada.");
 });
 
-/* ============ Navegación ============ */
-// Cliente: menú, pedido, mis pedidos y boleta. Cajero: pedidos de clientes y boleta. Admin: además ventas.
+/* ---------- Navegación entre pantallas ---------- */
 const inicio = () => esCliente() ? "menu" : "pedidos";
 function puedeVer(name){
   if(!sesion) return false;
@@ -903,7 +935,7 @@ document.querySelectorAll("[data-go]").forEach(a=>a.addEventListener("click", e=
   e.preventDefault(); go(a.dataset.go);
 }));
 
-/* ============ Menú ============ */
+/* ---------- Menú ---------- */
 function renderMenu(){
   const g = $("menuGrid"), sel = $("selProd"), actual = sel.value;
   g.innerHTML = ""; sel.innerHTML = "";
@@ -937,25 +969,27 @@ $("btnAdd").addEventListener("click",()=>{
   toast(`Agregado ${producto(id).nombre} x${cant}. ¿Otro? Sigue aquí o ve a Pedido.`);
 });
 
-/* ============ Pedido (carrito en C) ============ */
+/* ---------- Pedido (el carrito vive en C) ---------- */
 function itemsCarrito(){
   const items = [];
   for(let i=0; i<C.carrito_items(); i++){
     const p = producto(C.carrito_id(i));
-    items.push({id:p.id, nombre:p.nombre, precio:p.precio, cantidad:C.carrito_cantidad(i)});
+    items.push({nombre:p.nombre, precio:p.precio, cantidad:C.carrito_cantidad(i)});
   }
   return items;
 }
-function totalesCarrito(){ C.calcular_carrito(); return leerTotales(); }
-
+function totalesCarrito(){
+  C.calcular_carrito();
+  return {cant:C.total_cantidad(), sub:C.total_subtotal(), igv:C.total_igv(), tot:C.total_pagar()};
+}
 function renderCarrito(){
   const items = itemsCarrito();
   $("cartBody").innerHTML = items.map((it,idx)=>`<tr><td>${it.nombre}</td>
     <td><input type="number" min="1" value="${it.cantidad}" data-idx="${idx}"/></td>
-    <td class="num">${soles(it.precio)}</td><td class="num"><b>${soles(importe(it.precio,it.cantidad))}</b></td>
+    <td class="num">${soles(it.precio)}</td><td class="num"><b>${soles(C.importe(it.precio,it.cantidad))}</b></td>
     <td><button class="del" data-del="${idx}" aria-label="Quitar" type="button">❌</button></td></tr>`).join("");
   $("cartCards").innerHTML = items.map((it,idx)=>`<div class="cart-card">
-    <div><b>${it.nombre}</b><br><small>${soles(it.precio)} c/u = ${soles(importe(it.precio,it.cantidad))}</small></div>
+    <div><b>${it.nombre}</b><br><small>${soles(it.precio)} c/u = ${soles(C.importe(it.precio,it.cantidad))}</small></div>
     <div><input type="number" min="1" value="${it.cantidad}" data-idx="${idx}"/> <button class="del" data-del="${idx}" type="button">❌</button></div></div>`).join("");
 
   document.querySelectorAll("[data-del]").forEach(b=>b.addEventListener("click",()=>{
@@ -972,7 +1006,7 @@ function renderCarrito(){
   document.querySelector("#pedido .table-wrap").style.visibility = vacio ? "hidden" : "";
   if(vacio) $("payBox").hidden = true;
   $("miniCart").innerHTML = vacio ? `<li class="vacio">Aún no agregas productos</li>`
-    : items.map(i=>`<li><span>${i.cantidad} × ${i.nombre}</span><b>${soles(importe(i.precio,i.cantidad))}</b></li>`).join("");
+    : items.map(i=>`<li><span>${i.cantidad} × ${i.nombre}</span><b>${soles(C.importe(i.precio,i.cantidad))}</b></li>`).join("");
 
   const t = totalesCarrito();
   $("miniCount").textContent = vacio ? "vacío" : t.cant + " und.";
@@ -989,14 +1023,14 @@ function renderCarrito(){
 function sync(){ renderMenu(); renderCarrito(); actualizarYapeQR(); }
 $("btnSeguir").addEventListener("click",()=>go("menu"));
 
-/* ============ Pago (QR Yape solo al elegir Yape) ============ */
+/* ---------- Pago (QR Yape solo al elegir Yape) ---------- */
 const YAPE_NUMERO = "999888777";
 function metodoActual(){
   const r = document.querySelector('input[name="pay"]:checked');
-  return r ? r.value : "Efectivo";
+  return METODOS.indexOf(r ? r.value : "Efectivo");
 }
 function actualizarYapeQR(){
-  const esYape = metodoActual()==="Yape" && !$("payBox").hidden;
+  const esYape = METODOS[metodoActual()]==="Yape" && !$("payBox").hidden;
   $("yapeBox").hidden = !esYape;
   if(!esYape) return;
   const t = totalesCarrito();
@@ -1013,153 +1047,156 @@ $("btnFinalizar").addEventListener("click",()=>{
   $("payBox").scrollIntoView({behavior:"smooth", block:"center"});
   toast("Total calculado. Elige método de pago.");
 });
-$("btnPagar").addEventListener("click", enviarPedido);
 
-/* ============ Cliente: enviar pedido a caja ============ */
-function enviarPedido(){
-  cargarStock();                         // stock más reciente (otros clientes pudieron pedir)
-  const items = itemsCarrito(), t = totalesCarrito();
-  const r = C.carrito_confirmar();       // C revisa el stock, lo descuenta y vacía el carrito
-  if(r){ sync(); return toast(r===3 ? "Ya no hay stock suficiente de un producto. Revisa tu pedido." : MSG_CARRITO[r]); }
-  guardarStock();
-  const pedido = {
-    id: "P-" + String(siguiente("rlc_pnext")).padStart(4,"0"),
-    hora: new Date().toLocaleTimeString(), dia: hoyISO(),
-    dni: sesion.dni, cliente: sesion.nombre,
-    items, ...t, metodo: metodoActual(), estado: "pendiente"
-  };
-  const pedidos = leer("rlc_pedidos"); pedidos.push(pedido); guardar("rlc_pedidos", pedidos);
+/* ---------- Cliente: enviar pedido a caja (C lo crea) ---------- */
+$("btnPagar").addEventListener("click", ()=>{
+  cargarBase();
+  C.escribir(0, sesion.dni);
+  const id = C.pedido_crear(metodoActual(), hoy(), ahora());
+  if(id < 0){ sync(); return toast(MSG_PEDIDO[id]); }
+  guardarBase();
   $("payBox").hidden = true;
   sync(); actualizarBadges(); go("mispedidos");
-  toast("📤 Pedido " + pedido.id + " enviado a caja.");
-}
+  toast("📤 Pedido " + numPedido(id) + " enviado a caja.");
+});
 function renderMisPedidos(){
   if(!esCliente()) return;
-  const mios = leer("rlc_pedidos").filter(p=>p.dni===sesion.dni).reverse();
-  $("misPedidos").innerHTML = mios.length ? mios.map(p=>tarjetaPedido(p, "cliente")).join("")
+  C.escribir(0, sesion.dni); C.lista_cliente();
+  const html = [];
+  for(let k=0; k<C.lista_n(); k++) html.push(tarjetaPedido(C.lista_item(k), "cliente"));
+  $("misPedidos").innerHTML = html.length ? html.join("")
     : `<div class="card empty muted">Aún no envías pedidos. Ve al <b>Menú</b> para empezar.</div>`;
 }
 
-/* ============ Cajero: cola de pedidos ============ */
-const ESTADO_TXT = {pendiente:"⏳ Pendiente", cobrado:"✅ Cobrado", anulado:"✖ Anulado"};
-function tarjetaPedido(p, modo){
-  const items = p.items.map(i=>`<li><span>${i.cantidad} × ${i.nombre}</span><span>${soles(importe(i.precio,i.cantidad))}</span></li>`).join("");
-  let acciones = "";
-  if(modo==="cajero" && C.puede_cobrar(ESTADO[p.estado])){
-    acciones = `<div class="order-actions">
-      <select data-met="${p.id}" aria-label="Método de pago">${METODOS.map(m=>`<option ${m===p.metodo?"selected":""}>${m}</option>`).join("")}</select>
-      <input data-rec="${p.id}" type="number" min="0" step="0.10" placeholder="Efectivo recibido (S/)" aria-label="Efectivo recibido" />
-      <button class="btn btn-red" data-cobrar="${p.id}" type="button">Cobrar y generar boleta</button>
-      <button class="btn btn-ghost" data-anular="${p.id}" type="button">Anular</button></div>`;
-  } else if(modo==="cliente" && C.puede_anular(ESTADO[p.estado])){
-    acciones = `<p class="muted">Acércate a caja para pagar. Te avisaremos cuando se cobre.</p>
-      <div class="order-actions"><button class="btn btn-ghost" data-anular="${p.id}" type="button">Cancelar pedido</button></div>`;
-  } else if(p.estado==="cobrado"){
-    acciones = `<div class="order-actions"><button class="btn btn-dark" data-verbol="${p.boleta}" type="button">🎫 Ver boleta ${numBoleta(p.boleta)}</button></div>`;
+/* ---------- Tarjeta de un pedido (datos leídos de C) ---------- */
+function tarjetaPedido(i, modo, nuevo){
+  const id = C.ped_id(i), estado = C.ped_estado(i), clase = ESTADOS[estado];
+  const metodo = METODOS[C.ped_metodo(i)], atendio = C.texto(C.ped_atendio(i));
+  const items = [];
+  for(let k=0; k<C.ped_items(i); k++){
+    const p = producto(C.ped_item_id(i,k)), cant = C.ped_item_cantidad(i,k);
+    items.push(`<li><span>${cant} × ${p.nombre}</span><span>${soles(C.importe(C.ped_item_precio(i,k), cant))}</span></li>`);
   }
-  return `<div class="order ${p.estado} ${p.nuevo?"nuevo":""}">
-    <div class="order-head"><b>${p.id}</b><span class="st ${p.estado}">${ESTADO_TXT[p.estado]}</span></div>
-    <div class="order-cli">👤 <b>${esc(p.cliente)}</b> <small>• DNI ${esc(p.dni)} • ${esc(p.hora)}</small><br>
-      <small>Pago elegido: ${p.metodo}${p.atendio ? " • Atendió: " + esc(p.atendio) : ""}</small></div>
-    <ul>${items}</ul>
-    <div class="order-tot"><span>Total (${p.cant} und.)</span><span>${soles(p.tot)}</span></div>
+  let acciones = "";
+  if(modo==="cajero" && C.puede_cobrar(estado)){
+    acciones = `<div class="order-actions">
+      <select data-met="${id}" aria-label="Método de pago">${METODOS.map((m,n)=>`<option value="${n}" ${m===metodo?"selected":""}>${m}</option>`).join("")}</select>
+      <input data-rec="${id}" type="number" min="0" step="0.10" placeholder="Efectivo recibido (S/)" aria-label="Efectivo recibido" />
+      <button class="btn btn-red" data-cobrar="${id}" type="button">Cobrar y generar boleta</button>
+      <button class="btn btn-ghost" data-anular="${id}" type="button">Anular</button></div>`;
+  } else if(modo==="cliente" && C.puede_anular(estado)){
+    acciones = `<p class="muted">Acércate a caja para pagar. Te avisaremos cuando se cobre.</p>
+      <div class="order-actions"><button class="btn btn-ghost" data-anular="${id}" type="button">Cancelar pedido</button></div>`;
+  } else if(C.ped_boleta(i)){
+    acciones = `<div class="order-actions"><button class="btn btn-dark" data-verbol="${C.ped_boleta(i)}" type="button">🎫 Ver boleta ${numBoleta(C.ped_boleta(i))}</button></div>`;
+  }
+  return `<div class="order ${clase} ${nuevo?"nuevo":""}">
+    <div class="order-head"><b>${numPedido(id)}</b><span class="st ${clase}">${ESTADO_TXT[estado]}</span></div>
+    <div class="order-cli">👤 <b>${esc(C.texto(C.ped_cliente(i)))}</b> <small>• DNI ${esc(C.texto(C.ped_dni(i)))} • ${verHora(C.ped_hora(i))}</small><br>
+      <small>Pago elegido: ${metodo}${atendio ? " • Atendió: " + esc(atendio) : ""}</small></div>
+    <ul>${items.join("")}</ul>
+    <div class="order-tot"><span>Total (${C.ped_cant(i)} und.)</span><span>${soles(C.ped_tot(i))}</span></div>
     ${acciones}</div>`;
 }
+
+/* ---------- Cajero: pedidos por cobrar ---------- */
 let vistosCola = null;
 function renderCola(){
   if(!esStaff()) return [];
-  const pedidos = leer("rlc_pedidos");
-  const pend = pedidos.filter(p=>p.estado==="pendiente");
-  const nuevos = vistosCola ? pend.filter(p=>!vistosCola.has(p.id)) : [];
-  vistosCola = new Set(pend.map(p=>p.id));
-  pend.forEach(p=>p.nuevo = nuevos.some(n=>n.id===p.id));
-  $("colaPedidos").innerHTML = pend.length ? pend.map(p=>tarjetaPedido(p,"cajero")).join("")
+  C.lista_pendientes();
+  const pend = [];
+  for(let k=0; k<C.lista_n(); k++) pend.push(C.lista_item(k));
+  const ids = pend.map(i=>C.ped_id(i));
+  const nuevos = vistosCola ? pend.filter((i,n)=>!vistosCola.has(ids[n])) : [];
+  vistosCola = new Set(ids);
+  $("colaPedidos").innerHTML = pend.length ? pend.map(i=>tarjetaPedido(i,"cajero",nuevos.includes(i))).join("")
     : `<p class="empty muted">No hay pedidos pendientes. Cuando un cliente envíe uno aparecerá aquí.</p>`;
 
-  const hoy = pedidos.filter(p=>p.dia===hoyISO() && p.estado!=="pendiente").reverse();
-  const cob = hoy.filter(p=>p.estado==="cobrado");
-  C.reporte_iniciar();
-  cob.forEach(p=>C.reporte_venta(METODOS.indexOf(p.metodo), p.tot, p.igv, p.cant));
+  C.resumen_dia(hoy());
   $("sPend").textContent = pend.length;
-  $("sCob").textContent = C.reporte_boletas();
-  $("sCobTot").textContent = soles(C.reporte_total());
-  $("sAnul").textContent = hoy.length - cob.length;
-  $("atendidos").innerHTML = hoy.length ? hoy.map(p=>`<tr><td><b>${p.id}</b></td><td>${esc(p.hora)}</td>
-    <td>${esc(p.cliente)}<br><small class="muted">${esc(p.dni)}</small></td><td><span class="st ${p.estado}">${ESTADO_TXT[p.estado]}</span></td>
-    <td>${p.boleta ? numBoleta(p.boleta) : "—"}</td><td>${esc(p.atendio||"-")}</td><td class="num"><b>${soles(p.tot)}</b></td></tr>`).join("")
+  $("sCob").textContent = C.dia_cobrados();
+  $("sCobTot").textContent = soles(C.dia_total());
+  $("sAnul").textContent = C.dia_anulados();
+  const filas = [];
+  for(let k=0; k<C.lista_n(); k++){
+    const i = C.lista_item(k), est = C.ped_estado(i), bol = C.ped_boleta(i);
+    filas.push(`<tr><td><b>${numPedido(C.ped_id(i))}</b></td><td>${verHora(C.ped_hora(i))}</td>
+      <td>${esc(C.texto(C.ped_cliente(i)))}<br><small class="muted">${esc(C.texto(C.ped_dni(i)))}</small></td>
+      <td><span class="st ${ESTADOS[est]}">${ESTADO_TXT[est]}</span></td><td>${bol ? numBoleta(bol) : "—"}</td>
+      <td>${esc(C.texto(C.ped_atendio(i)) || "-")}</td><td class="num"><b>${soles(C.ped_tot(i))}</b></td></tr>`);
+  }
+  $("atendidos").innerHTML = filas.length ? filas.join("")
     : `<tr><td colspan="7" class="empty muted">Todavía no se atienden pedidos hoy.</td></tr>`;
-  return nuevos;
+  return nuevos.map(i=>({id:numPedido(C.ped_id(i)), cliente:C.texto(C.ped_cliente(i))}));
 }
 function cobrarPedido(id){
-  const pedidos = leer("rlc_pedidos"), p = pedidos.find(x=>x.id===id);
-  if(!p || !C.puede_cobrar(ESTADO[p.estado])){ toast("Ese pedido ya fue atendido."); refrescar(); return; }
-  const sel = document.querySelector(`[data-met="${id}"]`);
-  const metodo = sel ? sel.value : p.metodo;
-  let recibido = 0, vuelto = 0;
-  if(metodo==="Efectivo"){
+  cargarBase();
+  const metodo = +document.querySelector(`[data-met="${id}"]`).value;
+  let recibido = 0;
+  if(METODOS[metodo]==="Efectivo"){
     const txt = document.querySelector(`[data-rec="${id}"]`).value;
-    recibido = txt==="" ? NaN : aCentimos(txt);
-    if(isNaN(recibido)) return toast("Ingresa el efectivo recibido del cliente.");
-    vuelto = C.calcular_vuelto(p.tot, recibido);          // C calcula el vuelto (-1 = no alcanza)
-    if(vuelto < 0) return toast("Falta " + soles(p.tot - recibido) + " para completar el pago.");
+    if(txt==="") return toast("Ingresa el efectivo recibido del cliente.");
+    recibido = aCentimos(txt);
   }
-  const venta = {num:siguiente("rlc_next"), fecha:new Date().toLocaleString(), dia:hoyISO(), pedido:p.id,
-    dni:p.dni, cliente:p.cliente, items:p.items, cant:p.cant, sub:p.sub, igv:p.igv, tot:p.tot,
-    metodo, recibido, vuelto, vendedor:sesion.user};
-  const ventas = leer("rlc_ventas"); ventas.push(venta); guardar("rlc_ventas", ventas);
-  Object.assign(p, {estado:"cobrado", boleta:venta.num, metodo, atendio:sesion.user});
-  guardar("rlc_pedidos", pedidos);
-  mostrarBoleta(venta); actualizarBadges(); go("boleta");
-  toast("✅ " + p.id + " cobrado — " + numBoleta(venta.num));
+  C.escribir(0, sesion.user);
+  const num = C.pedido_cobrar(id, metodo, recibido, hoy(), ahora());     // C valida, calcula vuelto y crea la boleta
+  if(num===-3){
+    const i = C.pedido_buscar(id);
+    return toast("Falta " + soles(C.ped_tot(i) - recibido) + " para completar el pago.");
+  }
+  if(num < 0){ toast(MSG_COBRO[num]); refrescar(); return; }
+  guardarBase();
+  mostrarBoleta(C.venta_buscar(num)); actualizarBadges(); go("boleta");
+  toast("✅ " + numPedido(id) + " cobrado — " + numBoleta(num));
 }
 function anularPedido(id){
-  const pedidos = leer("rlc_pedidos"), p = pedidos.find(x=>x.id===id);
-  if(!p || !C.puede_anular(ESTADO[p.estado])){ refrescar(); return; }
-  p.estado = "anulado"; p.atendio = esCliente() ? "cliente" : sesion.user;
-  guardar("rlc_pedidos", pedidos);
-  cargarStock(); p.items.forEach(i=>C.stock_devolver(i.id, i.cantidad)); guardarStock();
-  sync(); refrescar();
-  toast(p.id + (esCliente() ? " cancelado." : " anulado."));
+  cargarBase();
+  C.escribir(0, esCliente() ? sesion.dni : sesion.user);
+  const r = C.pedido_anular(id, esCliente() ? 1 : 0);                 // C valida y devuelve el stock
+  if(r < 0){ refrescar(); return; }
+  guardarBase(); sync(); refrescar();
+  toast(numPedido(id) + (esCliente() ? " cancelado." : " anulado."));
 }
 document.addEventListener("click", e=>{
   const b = e.target.closest("[data-cobrar],[data-anular],[data-verbol]");
   if(!b) return;
-  if(b.dataset.cobrar) cobrarPedido(b.dataset.cobrar);
-  else if(b.dataset.anular) anularPedido(b.dataset.anular);
-  else {
-    const v = leer("rlc_ventas").find(x=>x.num===+b.dataset.verbol);
-    if(v){ mostrarBoleta(v); go("boleta"); }
-  }
+  if(b.dataset.cobrar) cobrarPedido(+b.dataset.cobrar);
+  else if(b.dataset.anular) anularPedido(+b.dataset.anular);
+  else { const v = C.venta_buscar(+b.dataset.verbol); if(v>=0){ mostrarBoleta(v); go("boleta"); } }
 });
 
-/* ============ Boleta ============ */
+/* ---------- Boleta (datos leídos de C) ---------- */
 function mostrarBoleta(v){
+  const i = C.ven_pedido(v);
   $("bEmpty").hidden = true; $("bContent").hidden = false;
-  $("bNum").textContent = numBoleta(v.num);
-  $("bFecha").textContent = v.fecha;
-  $("bPed").textContent = v.pedido;
-  $("bCli").textContent = v.cliente;
-  $("bDni").textContent = v.dni;
-  $("bVend").textContent = v.vendedor;
-  $("bPago").textContent = v.metodo;
-  $("bItems").innerHTML = v.items.map(i=>`<tr><td>${i.cantidad}</td><td>${i.nombre}</td>
-    <td class="num">${(i.precio/100).toFixed(2)}</td><td class="num">${(importe(i.precio,i.cantidad)/100).toFixed(2)}</td></tr>`).join("");
-  $("bCant").textContent = v.cant;
-  $("bSub").textContent = soles(v.sub);
-  $("bIgv").textContent = soles(v.igv);
-  $("bTot").textContent = soles(v.tot);
-  const efectivo = v.recibido > 0;
+  $("bNum").textContent = numBoleta(C.ven_num(v));
+  $("bFecha").textContent = verDia(C.ven_dia(v)) + " " + verHora(C.ven_hora(v));
+  $("bPed").textContent = numPedido(C.ped_id(i));
+  $("bCli").textContent = C.texto(C.ped_cliente(i));
+  $("bDni").textContent = C.texto(C.ped_dni(i));
+  $("bVend").textContent = C.texto(C.ven_vendedor(v));
+  $("bPago").textContent = METODOS[C.ven_metodo(v)];
+  const filas = [];
+  for(let k=0; k<C.ped_items(i); k++){
+    const p = producto(C.ped_item_id(i,k)), cant = C.ped_item_cantidad(i,k), pu = C.ped_item_precio(i,k);
+    filas.push(`<tr><td>${cant}</td><td>${p.nombre}</td><td class="num">${(pu/100).toFixed(2)}</td>
+      <td class="num">${(C.importe(pu,cant)/100).toFixed(2)}</td></tr>`);
+  }
+  $("bItems").innerHTML = filas.join("");
+  $("bCant").textContent = C.ped_cant(i);
+  $("bSub").textContent = soles(C.ped_sub(i));
+  $("bIgv").textContent = soles(C.ped_igv(i));
+  $("bTot").textContent = soles(C.ped_tot(i));
+  const efectivo = C.ven_recibido(v) > 0;
   $("bRecRow").hidden = $("bVueRow").hidden = !efectivo;
-  if(efectivo){ $("bRec").textContent = soles(v.recibido); $("bVue").textContent = soles(v.vuelto); }
+  if(efectivo){ $("bRec").textContent = soles(C.ven_recibido(v)); $("bVue").textContent = soles(C.ven_vuelto(v)); }
 }
 $("btnPrint").addEventListener("click", () => window.print());
 
-/* ============ Ventas (solo admin) — el reporte lo calcula C ============ */
+/* ---------- Ventas (solo admin): C arma el reporte ---------- */
 function renderVentas(){
-  const f=$("filtroPago").value, dia=$("filtroFecha").value;
-  const lista=leer("rlc_ventas").filter(v=>(f==="todos"||v.metodo===f) && (!dia||v.dia===dia)).reverse();
-  C.reporte_iniciar();
-  lista.forEach(v=>C.reporte_venta(METODOS.indexOf(v.metodo), v.tot, v.igv, v.cant));
+  const f = $("filtroPago").value, fecha = $("filtroFecha").value;
+  C.reporte_calcular(f==="todos" ? -1 : METODOS.indexOf(f), fecha ? +fecha.replaceAll("-","") : 0);
 
   $("dayTotal").textContent = soles(C.reporte_total());
   $("statCount").textContent = C.reporte_boletas() + " boletas";
@@ -1167,14 +1204,21 @@ function renderVentas(){
   $("statItems").textContent = C.reporte_unidades();
   $("statIgv").textContent = soles(C.reporte_igv());
 
-  const por = METODOS.map((m,i)=>[m, C.reporte_metodo(i)]);
+  const por = METODOS.map((m,n)=>[m, C.reporte_metodo(n)]);
   const max = Math.max(...por.map(x=>x[1]), 1);
   $("salesSummary").innerHTML = por.map(([k,v])=>`<div class="bar"><span class="lbl">${k}</span>
     <div class="track"><div class="fill" style="width:${v/max*100}%"></div></div><span class="val">${soles(v)}</span></div>`).join("");
 
-  $("salesList").innerHTML = lista.length ? lista.map(v=>`<tr><td><b>${numBoleta(v.num)}</b><br><small class="muted">${esc(v.pedido)}</small></td><td>${esc(v.fecha)}</td>
-    <td>${esc(v.cliente)}<br><small class="muted">${esc(v.dni)}</small></td><td>${v.cant}</td>
-    <td><span class="tag">${v.metodo}</span></td><td>${esc(v.vendedor||"-")}</td><td class="num"><b>${soles(v.tot)}</b></td></tr>`).join("")
+  const filas = [];
+  for(let k=0; k<C.lista_n(); k++){
+    const v = C.lista_item(k), i = C.ven_pedido(v);
+    filas.push(`<tr><td><b>${numBoleta(C.ven_num(v))}</b><br><small class="muted">${numPedido(C.ped_id(i))}</small></td>
+      <td>${verDia(C.ven_dia(v))} ${verHora(C.ven_hora(v))}</td>
+      <td>${esc(C.texto(C.ped_cliente(i)))}<br><small class="muted">${esc(C.texto(C.ped_dni(i)))}</small></td>
+      <td>${C.ped_cant(i)}</td><td><span class="tag">${METODOS[C.ven_metodo(v)]}</span></td>
+      <td>${esc(C.texto(C.ven_vendedor(v)))}</td><td class="num"><b>${soles(C.ped_tot(i))}</b></td></tr>`);
+  }
+  $("salesList").innerHTML = filas.length ? filas.join("")
     : `<tr><td colspan="7" class="empty muted">No hay ventas con estos filtros.</td></tr>`;
 }
 $("btnReporte").addEventListener("click",()=>{renderVentas(); toast("Reporte actualizado.");});
@@ -1182,16 +1226,13 @@ $("filtroPago").addEventListener("change",renderVentas);
 $("filtroFecha").addEventListener("change",renderVentas);
 $("btnLimpiar").addEventListener("click",()=>{ $("filtroPago").value="todos"; $("filtroFecha").value=""; renderVentas(); });
 
-/* ============ Sincronización cliente ↔ cajero (pestañas del mismo navegador) ============ */
+/* ---------- Avisos entre pestañas (cliente ↔ cajero) ---------- */
 function actualizarBadges(){
-  const pedidos = leer("rlc_pedidos");
-  const pend = pedidos.filter(p=>p.estado==="pendiente").length;
+  const pend = C.pendientes(0);
   $("navPend").textContent = pend;
   $("navPend").classList.toggle("zero", pend===0);
-  if(esCliente()) $("navMis").textContent = pedidos.filter(p=>p.dni===sesion.dni && p.estado==="pendiente").length;
+  if(esCliente()){ C.escribir(0, sesion.dni); $("navMis").textContent = C.pendientes(1); }
 }
-let ultimoPedidos = localStorage.getItem("rlc_pedidos");
-let ultimoStock = localStorage.getItem("rlc_stock");
 function refrescar(){
   if(!sesion) return [];
   const nuevos = renderCola();
@@ -1199,28 +1240,33 @@ function refrescar(){
   if(vistaActual==="ventas") renderVentas();
   return nuevos;
 }
+function estadosCliente(){
+  const m = {};
+  if(!esCliente()) return m;
+  C.escribir(0, sesion.dni); C.lista_cliente();
+  for(let k=0; k<C.lista_n(); k++){ const i = C.lista_item(k); m[C.ped_id(i)] = {estado:C.ped_estado(i), atendio:C.texto(C.ped_atendio(i))}; }
+  return m;
+}
 function revisarCambios(){
-  const ped = localStorage.getItem("rlc_pedidos"), stk = localStorage.getItem("rlc_stock");
-  if(stk !== ultimoStock){ ultimoStock = stk; cargarStock(); renderMenu(); }
-  if(ped === ultimoPedidos) return;
-  const antes = JSON.parse(ultimoPedidos || "[]");
-  ultimoPedidos = ped;
+  const t = localStorage.getItem(CLAVE_BASE);
+  if(!t || t===ultimaBase) return;
+  const antes = estadosCliente();
+  cargarBase(); renderMenu();
   const nuevos = refrescar();
   if(esStaff() && nuevos.length) toast("🔔 Nuevo pedido " + nuevos[0].id + " de " + nuevos[0].cliente);
-  if(esCliente()){
-    leer("rlc_pedidos").filter(p=>p.dni===sesion.dni).forEach(p=>{
-      const a = antes.find(x=>x.id===p.id);
-      if(a && a.estado==="pendiente" && p.estado==="cobrado") toast("✅ Tu pedido " + p.id + " fue cobrado. Ya puedes ver tu boleta.");
-      if(a && a.estado==="pendiente" && p.estado==="anulado" && p.atendio!=="cliente") toast("Tu pedido " + p.id + " fue anulado por caja.");
-    });
-  }
+  const despues = estadosCliente();
+  Object.entries(despues).forEach(([id,p])=>{
+    const a = antes[id]; if(!a || a.estado!==0) return;
+    if(p.estado===1) toast("✅ Tu pedido " + numPedido(+id) + " fue cobrado. Ya puedes ver tu boleta.");
+    if(p.estado===2 && p.atendio!=="cliente") toast("Tu pedido " + numPedido(+id) + " fue anulado por caja.");
+  });
 }
 window.addEventListener("storage", revisarCambios);
 setInterval(revisarCambios, 2000);
 
-/* ============ Inicio ============ */
+/* ---------- Inicio ---------- */
 $("todayLabel").textContent = "📅 " + new Date().toLocaleDateString("es-PE",{weekday:"long",day:"numeric",month:"long"});
-deviceHint(); cargarStock(); sync(); aplicarRol();
+cargarBase(); deviceHint(); sync(); aplicarRol();
 if(sesion){ renderCola(); go(inicio()); }
 }
 
@@ -1233,7 +1279,7 @@ if(sesion){ renderCola(); go(inicio()); }
  * ================================================================ */
 function cargarLogicaC(){
   const LOGICA_C_COMPILADA =
-    "AGFzbQEAAAABIwdgAAF/YAF/AX9gAABgAn9/AGACf38Bf2ABfwBgBH9/f38AAy4tAAEBAQECAwEDAQQEBQIAAQEAAgIDAgAAAAAEAQAAAAEBAAABAQIGAQAAAAAABQMBAAEGCAF/AUGAwAALB8oFLgZtZW1vcnkCAA9fX3N0YWNrX3BvaW50ZXIDAApwcm9kX3RvdGFsAAAHcHJvZF9pZAABC3Byb2Rfbm9tYnJlAAIKcHJvZF9lbW9qaQADC3Byb2RfcHJlY2lvAAQPc3RvY2tfcmVpbmljaWFyAAULc3RvY2tfcG9uZXIABghzdG9ja19kZQAHDnN0b2NrX2Rldm9sdmVyAAgKZGlzcG9uaWJsZQAJD2NhcnJpdG9fYWdyZWdhcgAKD2NhcnJpdG9fY2FtYmlhcgALDmNhcnJpdG9fcXVpdGFyAAwOY2Fycml0b192YWNpYXIADQ1jYXJyaXRvX2l0ZW1zAA4KY2Fycml0b19pZAAPEGNhcnJpdG9fY2FudGlkYWQAEBFjYXJyaXRvX2NvbmZpcm1hcgAREGNhbGN1bGFyX2NhcnJpdG8AEgxjYWxjX2luaWNpYXIAEwljYWxjX2l0ZW0AFA1jYWxjX3Rlcm1pbmFyABUOdG90YWxfY2FudGlkYWQAFg50b3RhbF9zdWJ0b3RhbAAXCXRvdGFsX2lndgAYC3RvdGFsX3BhZ2FyABkPY2FsY3VsYXJfdnVlbHRvABoHY2FzaWxsYQAbC2Nhc2lsbGFfdGFtABwLdmFsaWRhcl9kbmkAHRB2YWxpZGFyX3JlZ2lzdHJvAB8NbG9naW5fY2xpZW50ZQAgDGxvZ2luX2NhamVybwAhDWNhamVyb19ub21icmUAIgxwdWVkZV9jb2JyYXIAIwxwdWVkZV9hbnVsYXIAJA9yZXBvcnRlX2luaWNpYXIAJQ1yZXBvcnRlX3ZlbnRhACYOcmVwb3J0ZV9tZXRvZG8AJw1yZXBvcnRlX3RvdGFsACgLcmVwb3J0ZV9pZ3YAKQ9yZXBvcnRlX2JvbGV0YXMAKhByZXBvcnRlX3VuaWRhZGVzACsQcmVwb3J0ZV9wcm9tZWRpbwAsCu4cLQQAQQgLIgEBf0EAIQECQCAAQQdLDQAgAEEUbCgCgMCAgAAhAQsgAQs8AQF/QeB+IQECQANAIAFBoMGAgABqKAIAIABGDQEgAUEUaiIBDQALQYzDgIAADwsgAUGkwYCAAGooAgALPAEBf0HgfiEBAkADQCABQaDBgIAAaigCACAARg0BIAFBFGoiAQ0AC0GMw4CAAA8LIAFBqMGAgABqKAIACzgBAX9B4H4hAQJAA0AgAUGgwYCAAGooAgAgAEYNASABQRRqIgENAAtBAA8LIAFBrMGAgABqKAIACzQBAn9BYCEAQZDAgIAAIQEDQCAAQeDDgIAAaiABKAIANgIAIAFBFGohASAAQQRqIgANAAsLUgECf0EAIQJBgMCAgAAhAwJAA0AgAygCACAARg0BIANBFGohAyACQQFqIgJBCEcNAAtBfyECCwJAIAIgAXJBAEgNACACQQJ0IAE2AsDDgIAACwtAAQJ/QcDDgIAAIQFB4H4hAgJAA0AgAkGgwYCAAGooAgAgAEYNASABQQRqIQEgAkEUaiICDQALQQAPCyABKAIAC1EBAn9BwMOAgAAhAkHgfiEDAkACQANAIANBoMGAgABqKAIAIABGDQEgAkEEaiECIANBFGoiAw0ADAILCyABQQFIDQAgAiACKAIAIAFqNgIACwuZAQEEf0HAw4CAACEBQeB+IQICQAJAA0AgAkGgwYCAAGooAgAgAEYNASABQQRqIQEgAkEUaiICDQALQQAhAwwBCyABKAIAIQMLQQAhBAJAQQAoAuDDgIAAIgFBAUgNAEHww4CAACECAkADQCACKAIAIABGDQEgAkEIaiECIAFBf2oiAUUNAgwACwsgAkEEaigCACEECyADIARrC+YBAQR/QQEhAgJAIAFBAUgNAEHgfiEDAkADQCADQaDBgIAAaigCACAARg0BIANBFGoiAw0AC0ECDwsCQCABIAAQiYCAgABMDQBBAw8LQQAhAgJAQQAoAuDDgIAAIgRBAUgNAEHww4CAACEDIAQhBQJAAkADQCADKAIAIABGDQEgA0EIaiEDIAVBf2oiBUUNAgwACwsgA0EEaiIDIAMoAgAgAWo2AgBBAA8LIARBE0wNAEEEDwtBACAEQQFqNgLgw4CAACAEQQN0IgNB9MOAgABqIAE2AgAgA0Hww4CAAGogADYCAAsgAguZAQEDf0ECIQICQAJAIABBAEgNACAAQQAoAuDDgIAATg0AQQEhAiABQQFIDQAgAEEDdCIAQfDDgIAAaiEDIAAoAvDDgIAAIQRBwMOAgAAhAkHgfiEAAkADQCAAQaDBgIAAaigCACAERg0BIAJBBGohAiAAQRRqIgANAAwDCwsgASACKAIASg0BIAMgATYCBEEAIQILIAIPC0EDC28BA38CQCAAQQBIDQAgAEEAKALgw4CAACIBTg0AAkAgACABQX9qIgJODQAgAEEDdEHww4CAAGohAyAAQX9zIAFqIQADQCADIANBCGoiASkDADcDACABIQMgAEF/aiIADQALC0EAIAI2AuDDgIAACwsNAEEAQQA2AuDDgIAACwsAQQAoAuDDgIAACzABAX9BACEBAkAgAEEASA0AIABBACgC4MOAgABODQAgAEEDdCgC8MOAgAAhAQsgAQswAQF/QQAhAQJAIABBAEgNACAAQQAoAuDDgIAATg0AIABBA3QoAvTDgIAAIQELIAELpwIBBn8CQEEAKALgw4CAACIADQBBBQ8LAkAgAEEBSA0AQQAhAQNAIAFBA3QiAigC8MOAgAAhAyACKAL0w4CAACEEQcDDgIAAIQVB4H4hAgJAAkADQCACQaDBgIAAaigCACADRg0BIAVBBGohBSACQRRqIgINAAtBACECDAELIAUoAgAhAgsCQCAEIAJMDQBBAw8LIAFBAWoiASAARw0AC0EAIQEDQCABQQN0IgIoAvDDgIAAIQMgAigC9MOAgAAhBEGAwICAACECQQAhBQJAA0AgAigCACADRg0BIAJBFGohAiAFQQFqIgVBCEcNAAtBfyEFCyAFQQJ0QcDDgIAAaiICIAIoAgAgBGs2AgAgAUEBaiIBIABHDQALC0EAQQA2AuDDgIAAQQAL7QEBB39BAEEANgKUxYCAAEEAQQA2ApDFgIAAQQAhAAJAQQAoAuDDgIAAIgFBAUgNAEEAIQBBACECQQAhAwNAIAMgAkEDdCIEKAL0w4CAACIFaiEDIAQoAvDDgIAAIQZB4H4hBAJAAkADQCAEQaDBgIAAaigCACAGRg0BIARBFGoiBA0AC0EAIQQMAQsgBEGswYCAAGooAgAgBWwhBAsgACAEaiEAIAJBAWoiAiABRw0AC0EAIAA2ApTFgIAAQQAgAzYCkMWAgAALQQAgAEESbEEyakHkAG0iBDYCmMWAgABBACAEIABqNgKcxYCAAAsuAEEAQQA2ApTFgIAAQQBBADYCkMWAgABBAEEANgKYxYCAAEEAQQA2ApzFgIAACy8AQQBBACgCkMWAgAAgAWo2ApDFgIAAQQBBACgClMWAgAAgASAAbGo2ApTFgIAACzIBAn9BAEEAKAKUxYCAACIAQRJsQTJqQeQAbSIBNgKYxYCAAEEAIAEgAGo2ApzFgIAACwsAQQAoApDFgIAACwsAQQAoApTFgIAACwsAQQAoApjFgIAACwsAQQAoApzFgIAACw8AQX8gASAAayABIABIGwsWACAAQQd0QaDFgIAAakEAIABBBUkbCwUAQYABCwgAEJ6AgIAAC3wBA39BdyEAA0AgAEGpxYCAAGohASAAQQFqIgIhACABLQAADQALAkACQCACDQACQEEALQCgxYCAACIADQBBAQ8LQaHFgIAAIQEDQCAAQUZqQf8BcUH1AU0NAUEBIQIgAS0AACEAIAFBAWohASAARQ0CDAALC0EAIQILIAILpQQBB38CQBCegICAAA0AQQIPC0F/IQEDQCABIgJBAWohASACQaHGgIAAai0AAA0AC0EAIQICQCABRQ0AA0AgAkGgxoCAAGotAABBIEcNASABIAJBAWoiAkcNAAsgASECCwJAIAEgAk0NAANAIAFBn8aAgABqLQAAQSBHDQEgAUF/aiIBIAJKDQALIAIhAQsCQCABIAJrQQNODQBBAQ8LQX4hAQNAIAFBoseAgABqIQIgAUEBaiIDIQEgAi0AAA0AC0EDIQQCQCADQQFqIgVFDQBBACEBQX8hAgNAAkACQCABQaDHgIAAai0AACIGQcAARg0AIAZBIEcNAQwDCyACQX9KIQYgASECIAYNAgsgBSABQQFqIgFHDQALIAJBAUgNACACIANGDQBBfyEGAkAgAkEBaiIHIAVODQBBfyEGA0AgAkEBaiIBIAYgAkGhx4CAAGotAABBLkYbIQYgASECIAMgAUcNAAsLIAYgB0wNACAGIANODQBBfyEBA0AgAUGhyICAAGohAiABQQFqIgMhASACLQAADQALAkAgA0EGTw0AQQQPC0EAIQYCQAJAQQAtAKDIgIAAIgINAEGgyYCAACEBDAELQaDJgIAAIQEDQAJAIAJB/wFxIAEtAABGDQAgAiEGDAILIAFBgX9qIQIgAUEBaiIDIQEgAi0AACICDQALIAMhAQsCQCAGQf8BcSABLQAARg0AQQUPC0EGQQAgABshBAsgBAuIAQECfwJAEJ6AgIAADQBBAQ8LAkAgAA0AQQIPCwJAAkACQEEALQCgxoCAACIBDQBBoMeAgAAhAAwBC0Ggx4CAACEAA0AgAUH/AXEgAC0AAEcNAiAAQYF/aiEBIABBAWoiAiEAIAEtAAAiAQ0ACyACIQALQQAhAQtBAEEDIAFB/wFxIAAtAABGGwuzAwEHf0EAIQBBAEF/NgK4w4CAAEEBIQECQANAAkACQAJAIABBFGwiAigCkMOAgAAiAy0AACIEDQBBoMWAgAAhAwwBCyADQQFqIQVBoMWAgAAhAwNAIARB/wFxIAMtAABHDQIgA0EBaiEDIAUtAAAhBCAFQQFqIQUgBA0ACwtBACEECyACQZDDgIAAaiECAkACQAJAIARB/wFxIAMtAABGDQBBACEGAkACQCACKAIEIgQtAAAiAw0AQaDFgIAAIQQMAQsgBEEBaiEFQaDFgIAAIQQDQAJAIANB/wFxIAQtAABGDQAgAyEGDAILIARBAWohBCAFLQAAIQMgBUEBaiEFIAMNAAsLIAZB/wFxIAQtAABHDQELQQAhBgJAAkAgAigCCCIELQAAIgMNAEGgxoCAACEEDAELIARBAWohBUGgxoCAACEEA0ACQCADQf8BcSAELQAARg0AIAMhBgwCCyAEQQFqIQQgBS0AACEDIAVBAWohBSADDQALCyAGQf8BcSAELQAARg0BC0EBIQAgAUEBcSEEQQAhASAEDQEMAgsLQQAgADYCuMOAgAAgAigCECEBCyABCyoBAX8CQEEAKAK4w4CAACIAQQBODQBBjMOAgAAPCyAAQRRsKAKcw4CAAAsFACAARQsFACAARQtEAEEAQgA3A6jKgIAAQQBCADcDoMqAgABBAEEANgKwyoCAAEEAQQA2ArTKgIAAQQBBADYCuMqAgABBAEEANgK8yoCAAAt6AAJAIABBA0sNACAAQQJ0IgAgACgCoMqAgAAgAWo2AqDKgIAAC0EAQQAoArzKgIAAIAFqNgK8yoCAAEEAQQAoArjKgIAAIAJqNgK4yoCAAEEAQQAoArDKgIAAIANqNgKwyoCAAEEAQQAoArTKgIAAQQFqNgK0yoCAAAsiAQF/QQAhAQJAIABBA0sNACAAQQJ0KAKgyoCAACEBCyABCwsAQQAoArzKgIAACwsAQQAoArjKgIAACwsAQQAoArTKgIAACwsAQQAoArDKgIAACy8BAn9BACEAAkBBACgCtMqAgAAiAUUNAEEAKAK8yoCAACABQQJtaiABbSEACyAACwvMAwIAQYDAAAu4AwEAAABKIQAAwyAAAAoFAAAyAAAAAgAAAMggAAC5IAAAqgUAACgAAAADAAAA1SAAALQgAADuAgAAUAAAAAQAAAD4IAAAoCAAAJYPAAAUAAAABQAAACshAAClIAAA3gMAAC0AAAAGAAAAHSEAAK8gAADCAQAAZAAAAAcAAACBIQAAviAAAKYEAAAjAAAACAAAADwhAACqIAAAigIAAB4AAADwn6e6APCfjK0A8J+NqADwn6WkAPCfjZ8A8J+NlwDwn42WAPCfjZQAUG9sbG8gQ3Jpc3B5AFBhcGFzIEZyaXRhcyBHcmFuZGVzAEFkbWluaXN0cmFkb3IAQ29tYm8gRmFtaWxpYXIAQ2FqZXJvAGVtcGxlYWRvAGFkbWluAEdhc2Vvc2EgNTAwbWwASG90IERvZyBFc3BlY2lhbABIZWxhZG8gU3VuZGFlAEhhbWJ1cmd1ZXNhIENsYXNpY2EAMTIzNDU2Nzg5ADEyMzQ1NgAxMDAwMDAwMgAxMDAwMDAwMQBOdWdnZXRzIHgxMAAAAAAXIQAAeCEAAGghAADqIAAAAgAAAA4hAABvIQAAXiEAAAchAAABAAAAAEG4wwALBP////8=";
+    "AGFzbQEAAAABLAhgAX8Bf2AAAX9gAABgAn9/AX9gAX8AYAN/f38Bf2AFf39/f38Bf2ACf38AA1RTAAEBAAAAAAEBAQIAAAMDBAIBAAACAwEBAQEDAQEAAQEBAQEAAAAFBgMAAAAAAAAAAAAAAAAAAAMDAwAAAAAAAAAAAAEAAgIABAEBAQcAAQEBAQEFAwEAAwYIAX8BQYDAAAsHpAlTBm1lbW9yeQIAD19fc3RhY2tfcG9pbnRlcgMAB2Nhc2lsbGEAAAtjYXNpbGxhX3RhbQABCnByb2RfdG90YWwAAgdwcm9kX2lkAAMLcHJvZF9ub21icmUABApwcm9kX2Vtb2ppAAULcHJvZF9wcmVjaW8ABgpiYXNlX2RhdG9zAAcIYmFzZV90YW0ACAtiYXNlX3ZhbGlkYQAJDGJhc2VfaW5pY2lhcgAKCHN0b2NrX2RlAAsKZGlzcG9uaWJsZQAMD2NhcnJpdG9fYWdyZWdhcgAND2NhcnJpdG9fY2FtYmlhcgAODmNhcnJpdG9fcXVpdGFyAA8OY2Fycml0b192YWNpYXIAEA1jYXJyaXRvX2l0ZW1zABEKY2Fycml0b19pZAASEGNhcnJpdG9fY2FudGlkYWQAExBjYWxjdWxhcl9jYXJyaXRvABQHaW1wb3J0ZQAVDnRvdGFsX2NhbnRpZGFkABYOdG90YWxfc3VidG90YWwAFwl0b3RhbF9pZ3YAGAt0b3RhbF9wYWdhcgAZD2NhbGN1bGFyX3Z1ZWx0bwAaEWNsaWVudGVfcmVnaXN0cmFyABsNY2xpZW50ZV9sb2dpbgAeDmNsaWVudGVfbm9tYnJlAB8MbG9naW5fY2FqZXJvACANY2FqZXJvX25vbWJyZQAhDmNhamVyb191c3VhcmlvACINcGVkaWRvX2J1c2NhcgAjDHB1ZWRlX2NvYnJhcgAkDHB1ZWRlX2FudWxhcgAlDHBlZGlkb19jcmVhcgAmDXBlZGlkb19jb2JyYXIAJw1wZWRpZG9fYW51bGFyACgGcGVkX2lkACkHcGVkX2RuaQAqC3BlZF9jbGllbnRlACsHcGVkX2RpYQAsCHBlZF9ob3JhAC0KcGVkX21ldG9kbwAuCnBlZF9lc3RhZG8ALwpwZWRfYm9sZXRhADALcGVkX2F0ZW5kaW8AMQhwZWRfY2FudAAyB3BlZF9zdWIAMwdwZWRfaWd2ADQHcGVkX3RvdAA1CXBlZF9pdGVtcwA2C3BlZF9pdGVtX2lkADcRcGVkX2l0ZW1fY2FudGlkYWQAOA9wZWRfaXRlbV9wcmVjaW8AOQx2ZW50YV9idXNjYXIAOgd2ZW5fbnVtADsKdmVuX3BlZGlkbwA8B3Zlbl9kaWEAPQh2ZW5faG9yYQA+CnZlbl9tZXRvZG8APwx2ZW5fcmVjaWJpZG8AQAp2ZW5fdnVlbHRvAEEMdmVuX3ZlbmRlZG9yAEIHbGlzdGFfbgBDCmxpc3RhX2l0ZW0ARBBsaXN0YV9wZW5kaWVudGVzAEUNbGlzdGFfY2xpZW50ZQBGCnBlbmRpZW50ZXMARwtyZXN1bWVuX2RpYQBIDGRpYV9jb2JyYWRvcwBJCWRpYV90b3RhbABKDGRpYV9hbnVsYWRvcwBLEHJlcG9ydGVfY2FsY3VsYXIATA5yZXBvcnRlX21ldG9kbwBNDXJlcG9ydGVfdG90YWwATgtyZXBvcnRlX2lndgBPD3JlcG9ydGVfYm9sZXRhcwBQEHJlcG9ydGVfdW5pZGFkZXMAURByZXBvcnRlX3Byb21lZGlvAFIKiUFTFgAgAEEHdEHQw4CAAGpBACAAQQVJGwsFAEGAAQsEAEEICyIBAX9BACEBAkAgAEEHSw0AIABBFGwoAoDAgIAAIQELIAELPAEBf0HgfiEBAkADQCABQaDBgIAAaigCACAARg0BIAFBFGoiAQ0AC0Gcw4CAAA8LIAFBpMGAgABqKAIACzwBAX9B4H4hAQJAA0AgAUGgwYCAAGooAgAgAEYNASABQRRqIgENAAtBnMOAgAAPCyABQajBgIAAaigCAAs4AQF/QeB+IQECQANAIAFBoMGAgABqKAIAIABGDQEgAUEUaiIBDQALQQAPCyABQazBgIAAaigCAAsIAEHQyICAAAsGAEGolAkLDgBBACgC0MiAgABBAUYLcQECf0HY63YhAANAIABB+NyJgABqQQA6AAAgAEEBaiIADQALQQBBATYC0MiAgABBkMCAgAAhAEEEIQEDQCABQdDIgIAAaiAAKAIANgIAIABBFGohACABQQRqIgFBJEcNAAtBAEKBgICAEDcCgMmAgAALQAECf0HUyICAACEBQeB+IQICQANAIAJBoMGAgABqKAIAIABGDQEgAUEEaiEBIAJBFGoiAg0AC0EADwsgASgCAAuZAQEEf0HUyICAACEBQeB+IQICQAJAA0AgAkGgwYCAAGooAgAgAEYNASABQQRqIQEgAkEUaiICDQALQQAhAwwBCyABKAIAIQMLQQAhBAJAQQAoAvjciYAAIgFBAUgNAEGA3YmAACECAkADQCACKAIAIABGDQEgAkEMaiECIAFBf2oiAUUNAgwACwsgAkEEaigCACEECyADIARrC6sCAQN/QQEhAgJAIAFBAUgNAEHgfiECAkADQCACQaDBgIAAaigCACAARg0BIAJBFGoiAg0AC0ECDwsCQCABIAAQjICAgABMDQBBAw8LAkBBACgC+NyJgAAiA0EBSA0AQYDdiYAAIQIgAyEEAkACQANAIAIoAgAgAEYNASACQQxqIQIgBEF/aiIERQ0CDAALCyACQQRqIgIgAigCACABajYCAEEADwsgA0ETTA0AQQQPCyADQQxsIgJBhN2JgABqIAE2AgAgAkGA3YmAAGoiBCAANgIAQeB+IQICQAJAA0AgAkGgwYCAAGooAgAgAEYNASACQRRqIgINAAtBACECDAELIAJBrMGAgABqKAIAIQILIAQgAjYCCEEAIQJBACADQQFqNgL43ImAAAsgAguZAQEDf0ECIQICQAJAIABBAEgNACAAQQAoAvjciYAATg0AQQEhAiABQQFIDQAgAEEMbCIAQYDdiYAAaiEDIAAoAoDdiYAAIQRB1MiAgAAhAkHgfiEAAkADQCAAQaDBgIAAaigCACAERg0BIAJBBGohAiAAQRRqIgANAAwDCwsgASACKAIASg0BIAMgATYCBEEAIQILIAIPC0EDC3wBA38CQCAAQQBIDQAgAEEAKAL43ImAACIBTg0AAkAgACABQX9qIgJODQAgAEEMbEGA3YmAAGohAyAAQX9zIAFqIQADQCADIANBFGooAgA2AgggAyADQQxqIgEpAgA3AgAgASEDIABBf2oiAA0ACwtBACACNgL43ImAAAsLDQBBAEEANgL43ImAAAsLAEEAKAL43ImAAAswAQF/QQAhAQJAIABBAEgNACAAQQAoAvjciYAATg0AIABBDGwoAoDdiYAAIQELIAELMAEBf0EAIQECQCAAQQBIDQAgAEEAKAL43ImAAE4NACAAQQxsKAKE3YmAACEBCyABC6sBAQV/QQBBADYC9N6JgABBAEEANgLw3omAAEEAIQACQEEAKAL43ImAACIBQQFIDQBBACEAQYjdiYAAIQJBACEDA0AgAyACQXxqKAIAIgRqIQMgACACKAIAIARsaiEAIAJBDGohAiABQX9qIgENAAtBACAANgL03omAAEEAIAM2AvDeiYAAC0EAIABBEmxBMmpB5ABtIgI2AvjeiYAAQQAgAiAAajYC/N6JgAALBwAgASAAbAsLAEEAKALw3omAAAsLAEEAKAL03omAAAsLAEEAKAL43omAAAsLAEEAKAL83omAAAsPAEF/IAEgAGsgASAASBsLiggBB38CQBCcgICAAA0AQQIPC0F/IQADQCAAIgFBAWohACABQdHEgIAAai0AAA0AC0EAIQECQCAARQ0AA0AgAUHQxICAAGotAABBIEcNASAAIAFBAWoiAUcNAAsgACEBCwJAIAAgAU0NAANAIABBz8SAgABqLQAAQSBHDQEgAEF/aiIAIAFKDQALIAEhAAsCQCAAIAFrQQNODQBBAQ8LQQAhAANAIABB0MWAgABqIQEgAEEBaiICIQAgAS0AAA0AC0EDIQMCQCACQa5/akGwf0kNACACQX9qIQRBACEAQX8hAQNAAkACQCAAQdDFgIAAai0AACIFQcAARg0AIAVBIEcNAQwDCyABQX9KIQUgACEBIAUNAgsgBCAAQQFqIgBHDQALIAFBAUgNACABQQJqIAJGDQBBfyEFAkAgAUEBaiIGIARODQAgAkF+aiEEQX8hBQNAIAFBAWoiACAFIAFB0cWAgABqLQAAQS5GGyEFIAAhASAEIABHDQALCyAFIAZMDQAgBSACQX5qTg0AQX8hAANAIABB0caAgABqIQEgAEEBaiICIQAgAS0AAA0AC0EEIQMgAkEGSQ0AQX8hAANAIABB0caAgABqIQEgAEEBaiICIQAgAS0AAA0ACyACQShLDQBBACEFAkACQEEALQDQxoCAACIBDQBB0MeAgAAhAAwBC0HQx4CAACEAA0ACQCABQf8BcSAALQAARg0AIAEhBQwCCyAAQYF/aiEBIABBAWoiAiEAIAEtAAAiAQ0ACyACIQALAkAgBUH/AXEgAC0AAEYNAEEFDwsCQEHQw4CAABCdgICAAEF/TA0AQQYPC0EAIQACQEEAKAL0yICAACIEQccBTA0AQQcPC0EAIARBAWo2AvTIgIAAIARBwAFsQYjJgIAAaiECAkADQAJAIABB0MOAgABqLQAAIgENACAAIQEMAgsgAiAAaiABOgAAQQghASAAQQFqIgBBCEcNAAsLQQAhACACIAFqQQA6AAAgAkEJaiEDIARBwAFsQZHJgIAAaiEFAkADQAJAIABB0MSAgABqLQAAIgENACAAIQEMAgsgBSAAaiABOgAAQTwhASAAQQFqIgBBPEcNAAsLQQAhACADIAFqQQA6AAAgAkHGAGohAyAEQcABbEHOyYCAAGohBQJAA0ACQCAAQdDFgIAAai0AACIBDQAgACEBDAILIAUgAGogAToAAEHQACEBIABBAWoiAEHQAEcNAAsLQQAhACADIAFqQQA6AAAgAkGXAWohBSAEQcABbEGfyoCAAGohAgJAA0ACQCAAQdDGgIAAai0AACIBDQAgACEBDAILIAIgAGogAToAAEEoIQEgAEEBaiIAQShHDQALC0EAIQMgBSABakEAOgAACyADC3wBA39BdyEAA0AgAEHZw4CAAGohASAAQQFqIgIhACABLQAADQALAkACQCACDQACQEEALQDQw4CAACIADQBBAQ8LQdHDgIAAIQEDQCAAQUZqQf8BcUH1AU0NAUEBIQIgAS0AACEAIAFBAWohASAARQ0CDAALC0EAIQILIAILpgEBBn9BACEBAkBBACgC9MiAgAAiAkEBSA0AQYnJgIAAIQMDQAJAAkACQCABQcABbC0AiMmAgAAiBA0AIAAhBQwBCyADIQYgACEFA0AgBEH/AXEgBS0AAEcNAiAFQQFqIQUgBi0AACEEIAZBAWohBiAEDQALC0EAIQQLAkAgBEH/AXEgBS0AAEcNACABDwsgA0HAAWohAyABQQFqIgEgAkcNAAsLQX8LqQEBBH8CQBCcgICAAA0AQQEPC0EAIQACQEHQw4CAABCdgICAACIBQQBODQBBAg8LAkACQCABQcABbCIBLQCfyoCAACICDQBB0MSAgAAhAQwBCyABQaDKgIAAaiEDQdDEgIAAIQEDQAJAIAJB/wFxIAEtAABGDQAgAiEADAILIAFBAWohASADLQAAIQIgA0EBaiEDIAINAAsLQQBBAyAAQf8BcSABLQAARhsLKQEBf0Gcw4CAAEHQw4CAABCdgICAACIAQcABbEGRyYCAAGogAEEASBsLswMBB39BACEAQQBBfzYCyMOAgABBASEBAkADQAJAAkACQCAAQRRsIgIoAqDD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AAwBC0EAIAVBAWoiBTYCwOiJgAALQQAgBkEBaiIHNgKA34mAACAGQQJ0QZDfiYAAaiACQX5qNgIAIAchBgsgAUHAfWohASACQX9qIgJBAUsNAAsLCwsAQQAoAsjoiYAACwsAQQAoAsToiYAACwsAQQAoAsDoiYAAC6gDAQt/QQBCADcD2OiJgABBAEIANwPQ6ImAAEEAQQA2AuDoiYAAQQBBADYC5OiJgABBAEEANgLo6ImAAEEAQQA2AuzoiYAAQQBBADYCgN+JgAACQEEAKAL8yICAACICQQFIDQAgAkEBaiEDIAJBNGxB5OKIgABqIQJBACgC+MiAgAAhBEEAIQVBACEGQQAhB0EAIQhBACEJA0ACQAJAIABBAEgNACACKAIAIABHDQELAkAgAUUNACACQXhqKAIAIAFHDQELIAJBdGooAgAiCkHAAmxBiPWCgABqQfDoiYAAIAogBEgbQfDoiYAAIApBf0obIgooArwCIQsCQCACKAIAIgxBA0sNACAMQQJ0IgwgDCgC0OiJgAAgC2o2AtDoiYAAC0EAIAUgC2oiBTYC7OiJgABBACAIQQFqIgg2AuToiYAAQQAgCUEBaiILNgKA34mAAEEAIAYgCigCuAJqIgY2AujoiYAAQQAgByAKKAKwAmoiBzYC4OiJgAAgCUECdEGQ34mAAGogA0F+ajYCACALIQkLIAJBTGohAiADQX9qIgNBAUsNAAsLCyIBAX9BACEBAkAgAEEDSw0AIABBAnQoAtDoiYAAIQELIAELCwBBACgC7OiJgAALCwBBACgC6OiJgAALCwBBACgC5OiJgAALCwBBACgC4OiJgAALLwECf0EAIQACQEEAKALk6ImAACIBRQ0AQQAoAuzoiYAAIAFBAm1qIAFtIQALIAALC9wDAgBBgMAAC8gDAQAAAFohAADDIAAACgUAADIAAAACAAAAyCAAALkgAACqBQAAKAAAAAMAAADVIAAAtCAAAO4CAABQAAAABAAAAPggAACgIAAAlg8AABQAAAAFAAAAKyEAAKUgAADeAwAALQAAAAYAAAAdIQAAryAAAMIBAABkAAAABwAAAJEhAAC+IAAApgQAACMAAAAIAAAATCEAAKogAACKAgAAHgAAAPCfp7oA8J+MrQDwn42oAPCfpaQA8J+NnwDwn42XAPCfjZYA8J+NlABQb2xsbyBDcmlzcHkAUGFwYXMgRnJpdGFzIEdyYW5kZXMAQWRtaW5pc3RyYWRvcgBDb21ibyBGYW1pbGlhcgBDYWplcm8AZW1wbGVhZG8AYWRtaW4AR2FzZW9zYSA1MDBtbABIb3QgRG9nIEVzcGVjaWFsAGNsaWVudGUAQ2xpZW50ZQBIZWxhZG8gU3VuZGFlAEhhbWJ1cmd1ZXNhIENsYXNpY2EAMTIzNDU2Nzg5ADEyMzQ1NgAxMDAwMDAwMgAxMDAwMDAwMQBOdWdnZXRzIHgxMAAAAAAXIQAAiCEAAHghAADqIAAAAgAAAA4hAAB/IQAAbiEAAAchAAABAAAAAEHIwwALBP////8=";
   const bytes = Uint8Array.from(atob(LOGICA_C_COMPILADA), ch => ch.charCodeAt(0));
   return WebAssembly.instantiate(bytes, {}).then(({ instance }) => {
     const e = instance.exports;
