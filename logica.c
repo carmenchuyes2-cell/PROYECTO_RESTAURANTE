@@ -315,6 +315,22 @@ EXPORT int cliente_login(void) {
     return 0;
 }
 
+/* Cliente de prueba para la demo: siempre existe.
+ * DNI 12345678, contrasena 12345678. Devuelve 1 si lo tuvo que crear. */
+#define DEMO_DNI    "12345678"
+#define DEMO_NOMBRE "Cliente Demo"
+#define DEMO_CORREO "demo@restaurantelatina.com"
+#define DEMO_CLAVE  "12345678"
+EXPORT int asegurar_cliente_demo(void) {
+    if (buscarCliente(DEMO_DNI) >= 0 || base.nClientes >= MAX_CLIENTES) return 0;
+    Cliente *c = &base.clientes[base.nClientes++];
+    copiar(c->dni, DEMO_DNI, sizeof c->dni);
+    copiar(c->nombre, DEMO_NOMBRE, sizeof c->nombre);
+    copiar(c->correo, DEMO_CORREO, sizeof c->correo);
+    copiar(c->clave, DEMO_CLAVE, sizeof c->clave);
+    return 1;
+}
+
 /* Nombre del cliente cuyo DNI esta en la casilla 0 */
 EXPORT const char *cliente_nombre(void) {
     int i = buscarCliente(casillas[0]);
