@@ -140,6 +140,21 @@ input,select{width:100%;padding:.7rem .8rem;border:1px solid #ddd;border-radius:
 .yape-box h4{color:#5b21b6}
 .yape-box img{background:#fff;padding:8px;border-radius:10px;border:1px solid #ddd;max-width:100%;height:auto}
 .qr-monto{font-weight:bold;color:var(--rojo);font-size:1.2rem}
+.yape-estado{font-weight:bold;color:#5b21b6}
+.card-box{background:#f5f8ff;border:2px solid #1e3a8a;border-radius:12px;padding:1rem;display:grid;gap:.2rem}
+.card-box h4{color:#1e3a8a;margin:0 0 .4rem}
+.card-fila{display:grid;grid-template-columns:1fr 1fr;gap:.6rem}
+.tarjeta-vista{background:linear-gradient(135deg,#1e3a8a,#3b82f6);color:#fff;border-radius:12px;padding:1rem;display:grid;gap:.5rem;font-family:monospace;min-height:120px}
+.tarjeta-vista span{justify-self:end;font-weight:bold;font-family:inherit;letter-spacing:1px}
+.tarjeta-vista b{font-size:1.15rem;letter-spacing:1px}
+.tarjeta-vista div{display:flex;justify-content:space-between;gap:.5rem;font-size:.8rem;text-transform:uppercase}
+.card-3ds{background:#fff;border:1px dashed #1e3a8a;border-radius:10px;padding:.8rem;margin-top:.6rem;display:grid;gap:.4rem}
+.card-3ds p{margin:0}
+.pago-ok{position:fixed;inset:0;background:rgba(0,0,0,.55);display:grid;place-items:center;z-index:50;padding:16px}
+.pago-ok[hidden]{display:none}
+.pago-ok div{background:#fff;border-radius:16px;padding:2rem 1.5rem;text-align:center;max-width:360px;width:100%;border-top:8px solid #16a34a}
+.pago-ok b{display:block;font-size:3rem}
+.pago-ok h3{color:#16a34a;margin:.3rem 0}
 
 /* ============ Boleta ============ */
 .boleta{max-width:520px;background:#fff;border:2px solid var(--rojo);border-radius:12px;overflow:hidden;margin-bottom:1rem}
@@ -583,7 +598,7 @@ document.body.insertAdjacentHTML("afterbegin", `
             <h3>¿Cómo pagarás?</h3>
             <div class="pay-grid">
               <label class="pay-opt"><input type="radio" name="pay" value="Efectivo" checked /> 💵 Efectivo</label>
-              <label class="pay-opt"><input type="radio" name="pay" value="Tarjeta" /> 💳 Tarjeta</label>
+              <label class="pay-opt"><input type="radio" name="pay" value="Tarjeta" /> 💳 T. Débito</label>
               <label class="pay-opt"><input type="radio" name="pay" value="Yape" /> 📱 Yape</label>
               <label class="pay-opt"><input type="radio" name="pay" value="Tarjeta de credito" /> 💎 T. Crédito</label>
             </div>
@@ -592,8 +607,43 @@ document.body.insertAdjacentHTML("afterbegin", `
               <img id="qrImg" width="200" height="200" alt="QR Yape RestauranteLatina" />
               <p class="qr-monto" id="qrMonto">Total: S/ 0.00</p>
               <p>Yape al: <b>999 888 777</b> — RestauranteLatina</p>
-              <small class="muted">1) Abre Yape • 2) Escanea • 3) Confirma el monto • 4) Continúa</small>
+              <small class="muted" id="yapePasos">1) Escanea el QR con tu celular • 2) Pulsa Pagar • 3) Listo</small>
+              <p class="yape-estado" id="yapeEstado"></p>
             </div>
+            <!-- Pago con tarjeta en línea (simulado): ningún dato de la tarjeta se guarda -->
+            <form class="card-box" id="cardBox" hidden novalidate autocomplete="off">
+              <h4 id="cardTitulo">💳 Pago con tarjeta</h4>
+              <div class="tarjeta-vista" aria-hidden="true">
+                <span id="vMarca">TARJETA</span>
+                <b id="vNum">•••• •••• •••• ••••</b>
+                <div><small id="vNom">NOMBRE DEL TITULAR</small><small id="vVen">MM/AA</small></div>
+              </div>
+              <label for="cardNum">Número de tarjeta</label>
+              <input id="cardNum" inputmode="numeric" maxlength="19" placeholder="1234 5678 9012 3456" autocomplete="off" />
+              <label for="cardNom">Nombre del titular (como figura en la tarjeta)</label>
+              <input id="cardNom" placeholder="JUAN PEREZ" autocomplete="off" />
+              <div class="card-fila">
+                <div><label for="cardVen">Vencimiento</label><input id="cardVen" inputmode="numeric" maxlength="5" placeholder="MM/AA" autocomplete="off" /></div>
+                <div><label for="cardCvv">CVV</label><input id="cardCvv" type="password" inputmode="numeric" maxlength="4" placeholder="3 dígitos atrás" autocomplete="off" /></div>
+              </div>
+              <div id="cardCuotasFila">
+                <label for="cardCuotas">Cuotas</label>
+                <select id="cardCuotas">
+                  <option value="1">1 cuota (pago completo)</option>
+                  <option value="3">3 cuotas sin intereses</option>
+                  <option value="6">6 cuotas sin intereses</option>
+                  <option value="12">12 cuotas sin intereses</option>
+                </select>
+              </div>
+              <p class="error-msg" id="cardMsg" hidden></p>
+              <div class="card-3ds" id="card3ds" hidden>
+                <p><b>🔐 Verificación de tu banco</b></p>
+                <p class="muted">Te enviamos un código por SMS para confirmar la compra de <b id="otpMonto"></b>.</p>
+                <input id="cardOtp" inputmode="numeric" maxlength="6" placeholder="Código de 6 dígitos" autocomplete="one-time-code" />
+                <button class="btn btn-dark btn-block" id="btnOtp" type="button">Confirmar pago</button>
+              </div>
+              <small class="muted">🔒 Simulación: no escribas una tarjeta real. Prueba con 4111 1111 1111 1111, venc. 12/30, CVV 123 y código 123456.</small>
+            </form>
             <button class="btn btn-red btn-block" id="btnPagar" type="button">📤 Enviar pedido a caja</button>
           </div>
         </aside>
@@ -724,6 +774,8 @@ document.body.insertAdjacentHTML("afterbegin", `
 </div>
 
 <div class="toast" id="toast"></div>
+<div class="pago-ok" id="pagoOk" hidden><div><b>✅</b><h3>¡Pago exitoso!</h3><p id="pagoOkTxt"></p>
+  <button class="btn btn-red btn-block" id="pagoOkCerrar" type="button">Ver mis pedidos</button></div></div>
 `);
 
 /* ================================================================
@@ -888,7 +940,7 @@ $("loginForm").addEventListener("submit", e=>{
   iniciar({user, rol: rol===2 ? "admin" : "empleado", nombre}, "Caja abierta: " + nombre + ".");
 });
 $("btnLogout").addEventListener("click", ()=>{
-  C.carrito_vaciar(); $("payBox").hidden = true;
+  C.carrito_vaciar(); $("payBox").hidden = true; limpiarTarjeta();
   sesion = null; sessionStorage.removeItem("rl_sesion");
   aplicarRol(); mostrarTab("inicio"); sync(); toast("Sesión cerrada.");
 });
@@ -1025,36 +1077,191 @@ function renderCarrito(){
   $("fabTotal").textContent = soles(t.tot);
   $("navCount").textContent = t.cant;
 }
-function sync(){ renderMenu(); renderCarrito(); actualizarYapeQR(); }
+function sync(){ renderMenu(); renderCarrito(); actualizarPago(); }
 $("btnSeguir").addEventListener("click",()=>go("menu"));
 
-/* ---------- Pago (QR Yape solo al elegir Yape) ---------- */
+/* ---------- Pago (QR Yape solo al elegir Yape) ----------
+ * Con servidor_yape.cs encendido, el QR abre yape.html en el celular.
+ * Al pulsar "Pagar" ahí, esta página lo detecta, crea el pedido y C lo cobra con Yape. */
 const YAPE_NUMERO = "999888777";
+const YAPE = METODOS.indexOf("Yape");
+const URL_QR = "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=";
+let yape = null;            // {token, monto} del QR que se está mostrando
+let urlServidor = null;     // dirección del PC en la red wifi (la da el servidor)
+fetch("/api/ip").then(r=>r.ok ? r.json() : null).then(d=>{ urlServidor = d && d.url; actualizarPago(); }).catch(()=>{});
 function metodoActual(){
   const r = document.querySelector('input[name="pay"]:checked');
   return METODOS.indexOf(r ? r.value : "Efectivo");
 }
 function actualizarYapeQR(){
-  const esYape = METODOS[metodoActual()]==="Yape" && !$("payBox").hidden;
+  const esYape = metodoActual()===YAPE && !$("payBox").hidden;
+  const conCelular = esYape && !!urlServidor;
   $("yapeBox").hidden = !esYape;
-  if(!esYape) return;
+  $("btnPagar").disabled = conCelular;
+  $("btnPagar").textContent = conCelular ? "⏳ Esperando el pago con Yape..." : "📤 Enviar pedido a caja";
+  if(!esYape){ yape = null; return; }
   const t = totalesCarrito();
   $("qrMonto").textContent = "Total a pagar: " + soles(t.tot);
-  const data = "YAPE|RestauranteLatina|" + YAPE_NUMERO + "|S/" + (t.tot/100).toFixed(2);
-  $("qrImg").src = "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=" + encodeURIComponent(data);
+  if(!conCelular){
+    $("yapeEstado").textContent = "Para pagar desde el celular abre la app con iniciar_servidor.bat.";
+    const data = "YAPE|RestauranteLatina|" + YAPE_NUMERO + "|S/" + (t.tot/100).toFixed(2);
+    $("qrImg").src = URL_QR + encodeURIComponent(data);
+    return;
+  }
+  if(yape && yape.monto===t.tot) return;                 // el QR sigue valiendo
+  const token = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  yape = {token, monto:t.tot};
+  fetch("/api/yape/" + token + "?monto=" + t.tot, {method:"POST"}).catch(()=>{});
+  $("qrImg").src = URL_QR + encodeURIComponent(urlServidor + "/yape.html?t=" + token);
+  $("yapeEstado").textContent = "⏳ Esperando el pago desde el celular...";
 }
-document.querySelectorAll('input[name="pay"]').forEach(r=>r.addEventListener("change", actualizarYapeQR));
+// Revisa cada 1.5 s si el celular ya pulsó "Pagar"
+setInterval(()=>{
+  const y = yape;
+  if(!y || y.revisando) return;
+  y.revisando = true;
+  fetch("/api/yape/" + y.token).then(r=>r.json())
+    .then(d=>{ if(d.pagado && yape===y){ yape = null; pagoEnLinea(YAPE, "Yape", "con Yape"); } })
+    .catch(()=>{}).finally(()=>{ y.revisando = false; });
+}, 1500);
+
+/* ---------- Pago con tarjeta en línea (simulado) ----------
+ * Igual que en una tienda online: número, titular, vencimiento y CVV, y luego el
+ * banco pide un código por SMS (3-D Secure). Los datos de la tarjeta solo se revisan
+ * aquí: no se guardan ni se envían a ningún lado. */
+const TARJETA = METODOS.indexOf("Tarjeta"), CREDITO = METODOS.indexOf("Tarjeta de credito");
+const esTarjeta = m => m===TARJETA || m===CREDITO;
+const CODIGO_BANCO = "123456";                          // código SMS simulado
+const soloNumeros = s => s.replace(/\D/g, "");
+let tarjetaPagando = false;
+function marcaTarjeta(n){
+  if(/^4/.test(n)) return "VISA";
+  if(/^(5[1-5]|2[2-7])/.test(n)) return "MASTERCARD";
+  if(/^3[47]/.test(n)) return "AMEX";
+  if(/^3(0[0-5]|[689])/.test(n)) return "DINERS";
+  return "";
+}
+const largoTarjeta = marca => marca==="AMEX" ? 15 : marca==="DINERS" ? 14 : 16;
+// Algoritmo de Luhn: el último dígito de toda tarjeta real comprueba a los demás
+function luhnValido(n){
+  let s = 0;
+  for(let i=0; i<n.length; i++){
+    let d = +n[n.length-1-i];
+    if(i%2){ d *= 2; if(d>9) d -= 9; }
+    s += d;
+  }
+  return s%10===0;
+}
+function vistaTarjeta(){
+  const n = soloNumeros($("cardNum").value), marca = marcaTarjeta(n);
+  $("vMarca").textContent = marca || "TARJETA";
+  $("vNum").textContent = (n + "•".repeat(Math.max(0, largoTarjeta(marca)-n.length))).replace(/(.{4})(?=.)/g, "$1 ");
+  $("vNom").textContent = $("cardNom").value.trim() || "NOMBRE DEL TITULAR";
+  $("vVen").textContent = $("cardVen").value || "MM/AA";
+}
+$("cardNum").addEventListener("input", e=>{
+  const marca = marcaTarjeta(soloNumeros(e.target.value));
+  e.target.value = soloNumeros(e.target.value).slice(0, largoTarjeta(marca)).replace(/(\d{4})(?=\d)/g, "$1 ");
+  vistaTarjeta();
+});
+$("cardNom").addEventListener("input", e=>{ e.target.value = e.target.value.toUpperCase().replace(/[^A-ZÁÉÍÓÚÑÜ ]/g, ""); vistaTarjeta(); });
+$("cardVen").addEventListener("input", e=>{
+  const d = soloNumeros(e.target.value).slice(0, 4);
+  e.target.value = d.length > 2 ? d.slice(0,2) + "/" + d.slice(2) : d;
+  vistaTarjeta();
+});
+$("cardCvv").addEventListener("input", e=>{ e.target.value = soloNumeros(e.target.value).slice(0, 4); });
+$("cardOtp").addEventListener("input", e=>{ e.target.value = soloNumeros(e.target.value).slice(0, 6); });
+
+// Devuelve el error a mostrar, o "" si la tarjeta está bien escrita
+function errorTarjeta(){
+  const n = soloNumeros($("cardNum").value), marca = marcaTarjeta(n);
+  if(!n) return "Escribe el número de tu tarjeta.";
+  if(!marca) return "Solo aceptamos Visa, Mastercard, American Express y Diners.";
+  if(n.length!==largoTarjeta(marca)) return "El número de una tarjeta " + marca + " tiene " + largoTarjeta(marca) + " dígitos.";
+  if(!luhnValido(n)) return "El número de tarjeta no es válido. Revísalo.";
+  if(!/^[A-ZÁÉÍÓÚÑÜ]{2,}( [A-ZÁÉÍÓÚÑÜ]{2,})+$/.test($("cardNom").value.trim())) return "Escribe el nombre y apellido del titular.";
+  const v = /^(\d{2})\/(\d{2})$/.exec($("cardVen").value);
+  if(!v || +v[1]<1 || +v[1]>12) return "Escribe el vencimiento como MM/AA (ejemplo: 08/28).";
+  const d = new Date();
+  if(2000 + +v[2] < d.getFullYear() || (2000 + +v[2]===d.getFullYear() && +v[1] < d.getMonth()+1)) return "Tu tarjeta está vencida.";
+  const cvv = $("cardCvv").value, largoCvv = marca==="AMEX" ? 4 : 3;
+  if(cvv.length!==largoCvv) return "El CVV tiene " + largoCvv + " dígitos" + (marca==="AMEX" ? " (adelante de la tarjeta)." : " (atrás de la tarjeta).");
+  return "";
+}
+function limpiarTarjeta(){
+  $("cardBox").reset(); $("cardMsg").hidden = true; $("card3ds").hidden = true;
+  tarjetaPagando = false; vistaTarjeta();
+}
+// Paso 1: revisar los datos y pedir el código del banco
+function pagarConTarjeta(){
+  const err = errorTarjeta();
+  $("cardMsg").textContent = err; $("cardMsg").hidden = !err;
+  if(err) return;
+  tarjetaPagando = true; actualizarPago();
+  $("otpMonto").textContent = soles(totalesCarrito().tot);
+  $("card3ds").hidden = false; $("cardOtp").value = ""; $("cardOtp").focus();
+}
+// Paso 2: el banco confirma el código y se cobra
+$("btnOtp").addEventListener("click", ()=>{
+  if($("cardOtp").value!==CODIGO_BANCO){
+    $("cardMsg").textContent = "Código incorrecto. Revisa el SMS de tu banco."; $("cardMsg").hidden = false; return;
+  }
+  $("cardMsg").hidden = true;
+  $("btnOtp").disabled = true; $("btnOtp").textContent = "Procesando pago...";
+  setTimeout(()=>{
+    const n = soloNumeros($("cardNum").value), m = metodoActual(), cuotas = +$("cardCuotas").value;
+    const detalle = "con " + marcaTarjeta(n) + " •••• " + n.slice(-4) + (m===CREDITO && cuotas>1 ? " en " + cuotas + " cuotas" : "");
+    $("btnOtp").disabled = false; $("btnOtp").textContent = "Confirmar pago";
+    if(pagoEnLinea(m, "Pago en línea", detalle)) limpiarTarjeta();
+  }, 1500);
+});
+
+/* ---------- Pago en línea confirmado: C crea el pedido y lo cobra ---------- */
+function pagoEnLinea(metodo, atendio, detalle){
+  cargarBase();
+  C.escribir(0, sesion.dni);
+  const id = C.pedido_crear(metodo, hoy(), ahora());
+  if(id < 0){ sync(); toast(MSG_PEDIDO[id] + " Acércate a caja."); return false; }
+  const monto = C.ped_tot(C.pedido_buscar(id));
+  C.escribir(0, atendio);
+  C.pedido_cobrar(id, metodo, 0, hoy(), ahora());        // C lo marca cobrado y crea la boleta
+  guardarBase();
+  $("payBox").hidden = true;
+  sync(); actualizarBadges(); go("mispedidos");
+  $("pagoOkTxt").textContent = numPedido(id) + " • " + soles(monto) + " pagado " + detalle + ". Tu pedido ya pasó al restaurante.";
+  $("pagoOk").hidden = false;
+  return true;
+}
+$("pagoOkCerrar").addEventListener("click", ()=>{ $("pagoOk").hidden = true; });
+
+// Muestra el QR de Yape o el formulario de tarjeta según el método elegido
+function actualizarPago(){
+  const m = metodoActual(), conTarjeta = esTarjeta(m) && !$("payBox").hidden;
+  actualizarYapeQR();
+  $("cardBox").hidden = !conTarjeta;
+  if(!conTarjeta) return;
+  $("cardTitulo").textContent = m===CREDITO ? "💎 Pago con tarjeta de crédito" : "💳 Pago con tarjeta de débito";
+  $("cardCuotasFila").hidden = m!==CREDITO;
+  $("btnPagar").disabled = tarjetaPagando;
+  $("btnPagar").textContent = tarjetaPagando ? "🔐 Confirma el código de tu banco" : "🔒 Pagar " + soles(totalesCarrito().tot);
+}
+document.querySelectorAll('input[name="pay"]').forEach(r=>r.addEventListener("change", ()=>{
+  if(tarjetaPagando){ tarjetaPagando = false; $("card3ds").hidden = true; }
+  actualizarPago();
+}));
 $("btnFinalizar").addEventListener("click",()=>{
   if(!C.carrito_items()) return toast(MSG_CARRITO[5]);
   $("payBox").hidden = false;
   go("pedido");
-  actualizarYapeQR();
+  actualizarPago();
   $("payBox").scrollIntoView({behavior:"smooth", block:"center"});
   toast("Total calculado. Elige método de pago.");
 });
 
 /* ---------- Cliente: enviar pedido a caja (C lo crea) ---------- */
 $("btnPagar").addEventListener("click", ()=>{
+  if(esTarjeta(metodoActual())) return pagarConTarjeta();
   cargarBase();
   C.escribir(0, sesion.dni);
   const id = C.pedido_crear(metodoActual(), hoy(), ahora());
@@ -1282,7 +1489,6 @@ if(sesion){ renderCola(); go(inicio()); }
  * Si se modifica logica.c, hay que volver a compilarlo y reemplazar
  * el texto de LOGICA_C_COMPILADA.
  * ================================================================ */
-
 function cargarLogicaC(){
   const LOGICA_C_COMPILADA =
     "AGFzbQEAAAABLAhgAX8Bf2AAAX9gAABgAn9/AX9gAX8AYAN/f38Bf2AFf39/f38Bf2ACf38AA1VUAAEBAAAAAAEBAQIAAAMDBAIBAAACAwEBAQEDAQEAAQEBAQEBAAAABQYDAAAAAAAAAAAAAAAAAAADAwMAAAAAAAAAAAABAAICAAQBAQEHAAEBAQEBBQMBAAMGCAF/AUGAwAALB7wJVAZtZW1vcnkCAA9fX3N0YWNrX3BvaW50ZXIDAAdjYXNpbGxhAAALY2FzaWxsYV90YW0AAQpwcm9kX3RvdGFsAAIHcHJvZF9pZAADC3Byb2Rfbm9tYnJlAAQKcHJvZF9lbW9qaQAFC3Byb2RfcHJlY2lvAAYKYmFzZV9kYXRvcwAHCGJhc2VfdGFtAAgLYmFzZV92YWxpZGEACQxiYXNlX2luaWNpYXIACghzdG9ja19kZQALCmRpc3BvbmlibGUADA9jYXJyaXRvX2FncmVnYXIADQ9jYXJyaXRvX2NhbWJpYXIADg5jYXJyaXRvX3F1aXRhcgAPDmNhcnJpdG9fdmFjaWFyABANY2Fycml0b19pdGVtcwARCmNhcnJpdG9faWQAEhBjYXJyaXRvX2NhbnRpZGFkABMQY2FsY3VsYXJfY2Fycml0bwAUB2ltcG9ydGUAFQ50b3RhbF9jYW50aWRhZAAWDnRvdGFsX3N1YnRvdGFsABcJdG90YWxfaWd2ABgLdG90YWxfcGFnYXIAGQ9jYWxjdWxhcl92dWVsdG8AGhFjbGllbnRlX3JlZ2lzdHJhcgAbDWNsaWVudGVfbG9naW4AHhVhc2VndXJhcl9jbGllbnRlX2RlbW8AHw5jbGllbnRlX25vbWJyZQAgDGxvZ2luX2NhamVybwAhDWNhamVyb19ub21icmUAIg5jYWplcm9fdXN1YXJpbwAjDXBlZGlkb19idXNjYXIAJAxwdWVkZV9jb2JyYXIAJQxwdWVkZV9hbnVsYXIAJgxwZWRpZG9fY3JlYXIAJw1wZWRpZG9fY29icmFyACgNcGVkaWRvX2FudWxhcgApBnBlZF9pZAAqB3BlZF9kbmkAKwtwZWRfY2xpZW50ZQAsB3BlZF9kaWEALQhwZWRfaG9yYQAuCnBlZF9tZXRvZG8ALwpwZWRfZXN0YWRvADAKcGVkX2JvbGV0YQAxC3BlZF9hdGVuZGlv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";
