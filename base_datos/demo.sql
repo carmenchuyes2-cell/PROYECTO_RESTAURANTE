@@ -5,7 +5,7 @@
 \dt
 
 \echo '=== 2. Productos y stock ==='
-SELECT id, nombre, emoji, precio/100.0 AS precio_soles, stock FROM productos ORDER BY id;
+SELECT id, nombre, emoji, ROUND(precio/100.0, 2) AS precio_soles, stock FROM productos ORDER BY id;
 
 \echo '=== 3. Inicio de sesion del cliente demo (DNI 12345678) ==='
 SELECT nombre FROM clientes
