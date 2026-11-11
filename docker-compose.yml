@@ -1,0 +1,27 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: restaurante
+    volumes:
+      - ./base_datos/schema.sql:/docker-entrypoint-initdb.d/1-schema.sql
+      - ./base_datos/datos.sql:/docker-entrypoint-initdb.d/2-datos.sql
+      - dbdata:/var/lib/postgresql/data
+
+  backend:
+    build: ../BACKEND-END
+    environment:
+      DB_HOST: db
+    depends_on:
+      - db
+
+  frontend:
+    build: ../FRONT-END
+    ports:
+      - "8081:80"
+    depends_on:
+      - backend
+
+volumes:
+  dbdata:
