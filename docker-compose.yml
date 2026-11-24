@@ -10,14 +10,14 @@ services:
       - dbdata:/var/lib/postgresql/data
 
   backend:
-    build: ../BACKEND-END
+    build: https://github.com/skytzwaaa/BACKEND-END.git#main
     environment:
       DB_HOST: db
     depends_on:
       - db
 
   frontend:
-    build: ../FRONT-END
+    build: https://github.com/skytzwaaa/FRONT-END.git#main
     ports:
       - "8081:80"
     depends_on:
