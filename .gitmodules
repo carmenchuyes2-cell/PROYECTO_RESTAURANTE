@@ -1,0 +1,9 @@
+[submodule "BASE-DATOS"]
+	path = BASE-DATOS
+	url = https://github.com/carmenchuyes2-cell/BASE-DATOS.git
+[submodule "BACKEND-END"]
+	path = BACKEND-END
+	url = https://github.com/carmenchuyes2-cell/BACKEND-END.git
+[submodule "FRONT-END"]
+	path = FRONT-END
+	url = https://github.com/carmenchuyes2-cell/FRONT-END.git
